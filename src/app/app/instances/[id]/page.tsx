@@ -12,9 +12,15 @@ import { ago, bytes, dt, duration } from "@/lib/format";
 import { editInstance, removeInstance, saveThresholds, testConnection, toggleEnabled } from "@/app/app/actions";
 import { ENGINE_TABS } from "./engines";
 import { SIZE_LABEL, type EngineType } from "@/lib/drivers/types";
+import { hasExplorer } from "@/lib/explore";
+import { Explorer } from "./explorer";
 
 export const dynamic = "force-dynamic";
 
+const EXPLORE_TABS = [
+  { key: "explorer", label: "Explorer" },
+  { key: "stats", label: "Statistiques" },
+];
 const COMMON_TABS = [
   { key: "overview", label: "Vue d'ensemble" },
   { key: "settings", label: "Paramètres" },
@@ -26,7 +32,9 @@ export default async function InstancePage({ params, searchParams }: { params: {
   const tab = searchParams.tab ?? "overview";
   const engineDef = ENGINE_TABS[inst.type as EngineType];
   const engineTabs = engineDef?.tabs ?? [];
-  const tabs = [COMMON_TABS[0], ...engineTabs, COMMON_TABS[1]];
+  // Explorer + Statistiques only for engines with an implementation (src/lib/explore).
+  const exploreTabs = hasExplorer(inst.type as EngineType) ? EXPLORE_TABS : [];
+  const tabs = [COMMON_TABS[0], ...engineTabs, ...exploreTabs, COMMON_TABS[1]];
   const base = `/app/instances/${inst.id}`;
   const checks = await prisma.check.findMany({ where: { instanceId: inst.id }, orderBy: { at: "desc" }, take: 120 });
   const last = checks[0];
@@ -159,6 +167,8 @@ export default async function InstancePage({ params, searchParams }: { params: {
           </div>
         )}
         {engine}
+        {exploreTabs.length > 0 && tab === "explorer" && <Explorer instanceId={inst.id} mode="explore" />}
+        {exploreTabs.length > 0 && tab === "stats" && <Explorer instanceId={inst.id} mode="stats" />}
         {tab === "settings" && (
           <div className="grid gap-4 lg:grid-cols-3">
             <div className="card lg:col-span-2">
