@@ -345,7 +345,7 @@ Console guard (`guardOracle`): the generic SQL guard (single SELECT/WITH,
 DML/DDL keywords, `FOR UPDATE`, multiple statements, quoted-identifier calls)
 plus: PL/SQL blocks and calls refused as first keyword (`BEGIN`, `DECLARE`,
 `CALL`, `EXEC`, `EXECUTE`), `DBMS_*`, `UTL_*`, `EXECUTE IMMEDIATE`,
-`HTTPURITYPE`, `CTX_*`, `APEX_*`, `ORDS_*` and `q'...'` literals refused
+`HTTPURITYPE`, `CTX_*`, `APEX_*`, `ORDS_*`, `OWA_*`, `HTP.*` and `q'...'` / `nq'...'` literals refused
 anywhere. The statement runs after `SET TRANSACTION READ ONLY` (Oracle refuses
 any DML in it with ORA-01456, verified in the integration test by bypassing
 the guard), `callTimeout` 5 s (the driver cancels the round-trip: `NJS-123`),
