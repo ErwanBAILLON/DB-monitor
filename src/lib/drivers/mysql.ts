@@ -146,16 +146,25 @@ export async function createDatabase(c: Conn, name: string, user: string | undef
 export async function readOnlyQuery(c: Conn, sql: string, database?: string): Promise<QueryResult> {
   const g = guardReadOnly(sql);
   if (!g.ok) throw new Error(g.reason);
-  return withMy({ ...c, database: database ?? c.database }, async (conn) => {
+  return readOnlyExec(c, database, async (conn) => {
     const t0 = Date.now();
+    const [res, fields] = await conn.query({ sql: g.sql, rowsAsArray: true });
+    const columns = (fields ?? []).map((f) => f.name);
+    return tabulate(columns, res as unknown[][], t0);
+  });
+}
+
+// Read-only execution path shared by the console and the explorer: READ ONLY session
+// + transaction, statement timeout, always rolled back. `fn` may run several
+// parametrised statements.
+export async function readOnlyExec<T>(c: Conn, database: string | undefined, fn: (conn: mysql.Connection) => Promise<T>): Promise<T> {
+  return withMy({ ...c, database: database ?? c.database }, async (conn) => {
     await conn.query("SET SESSION TRANSACTION READ ONLY");
     // MySQL: ms; MariaDB: seconds (max_statement_time). One of the two exists.
     await conn.query(`SET SESSION max_execution_time = ${QUERY_TIMEOUT_MS}`).catch(() => conn.query(`SET SESSION max_statement_time = ${QUERY_TIMEOUT_MS / 1000}`).catch(() => undefined));
     await conn.query("START TRANSACTION READ ONLY");
     try {
-      const [res, fields] = await conn.query({ sql: g.sql, rowsAsArray: true });
-      const columns = (fields ?? []).map((f) => f.name);
-      return tabulate(columns, res as unknown[][], t0);
+      return await fn(conn);
     } finally {
       await conn.query("ROLLBACK").catch(() => undefined);
     }
