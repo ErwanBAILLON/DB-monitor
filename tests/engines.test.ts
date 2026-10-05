@@ -349,6 +349,14 @@ describe("neo4j parsers and Cypher guard", () => {
     ko("LOAD CSV FROM 'file:///x.csv' AS row RETURN row", /LOAD CSV/);
     ko("CALL dbms.killConnections(['x'])", /Procédure interdite/);
     ko("CALL dbms.security.listUsers()", /Procédure interdite/);
+    // Backtick-quoted procedure names resolve to the same procedure: no allowlist bypass.
+    ko("CALL `dbms.killConnections`(['x'])", /Procédure interdite/);
+    ko("CALL `dbms`.`killConnections`(['x']) YIELD connectionId, message RETURN *", /Procédure interdite/);
+    ko("WITH 1 AS x CALL `dbms`.`killConnections`(['x']) RETURN x", /Procédure interdite/);
+    ko("CALL `apoc`.`load`.`json`('http://x') YIELD value RETURN value", /interdite|apoc/);
+    ko("RETURN `apoc`.version()", /apoc/);
+    ko("RETURN `apoc.version`()", /apoc/);
+    ok("CALL `db`.`labels`() YIELD label RETURN label");
     ko("CALL apoc.load.json('http://x') YIELD value RETURN value", /interdite|apoc/);
     ko("CALL apoc.cypher.runWrite('CREATE ()', {}) YIELD value RETURN value", /interdite|apoc/);
     ko("MATCH (n) RETURN n; MATCH (m) RETURN m", /Une seule/);

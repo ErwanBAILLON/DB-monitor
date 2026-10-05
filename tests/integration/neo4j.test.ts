@@ -65,6 +65,9 @@ describe.skipIf(!url)("neo4j driver (integration)", () => {
     expect(String(nodes.rows[0].a)).toMatch(new RegExp(`^\\(:${L} `));
     await expect(neo.readOnlyQuery(conn, `MATCH (n:${L}) SET n.x = 1 RETURN n`)).rejects.toThrow(/SET/);
     await expect(neo.readOnlyQuery(conn, "CALL dbms.security.listUsers()")).rejects.toThrow(/Procédure/);
+    // DBMS-mode procedures run under READ access mode: the guard must catch the quoted form too.
+    await expect(neo.readOnlyQuery(conn, "CALL `dbms`.`killConnections`(['bolt-nope']) YIELD connectionId, message RETURN *")).rejects.toThrow(/Procédure/);
+    await expect(neo.readOnlyQuery(conn, "CALL `dbms.killConnections`(['bolt-nope'])")).rejects.toThrow(/Procédure/);
     await expect(neo.readOnlyQuery(conn, "MATCH (n) RETURN n", "system")).rejects.toThrow(/system/);
     // Bypass: a write through readQuery (READ access mode) must be rejected by the server.
     await neo.withDriver(conn, async (d) => {

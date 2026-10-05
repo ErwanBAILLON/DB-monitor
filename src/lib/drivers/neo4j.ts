@@ -204,12 +204,16 @@ export function guardCypher(input: string): CypherGuard {
   if (/['"](?!['"])/.test(stripped.replace(/''/g, ""))) return { ok: false, reason: "Littéral non terminé." };
   if (stripped.includes(";")) return { ok: false, reason: "Une seule instruction autorisée." };
   const noIdent = stripped.replace(/`[^`]*`/g, " `` ");
+  // Procedure and apoc checks run on the text with backticks removed: `dbms`.`killConnections`
+  // or `apoc.load.json` name the same procedure as the unquoted form, so quoting must not
+  // bypass the allowlist. Keyword checks keep using noIdent (a label named `SET` is legal).
+  const unquoted = stripped.replace(/`([^`]*)`/g, "$1");
   const hit = noIdent.match(CYPHER_FORBIDDEN);
   if (hit) return { ok: false, reason: `Mot-clé interdit : ${hit[1].toUpperCase().replace(/\s+/g, " ")}.` };
-  for (const m of noIdent.matchAll(/\bcall\s+([\w.]+)\s*(\(|yield|$)/gi)) {
-    if (!CALL_ALLOWED.test(m[1])) return { ok: false, reason: `Procédure interdite : ${m[1]} (seules les procédures de lecture db.* / dbms.components|listConfig|queryJmx sont admises).` };
+  for (const m of unquoted.matchAll(/\bcall\s+([^\s({]+)/gi)) {
+    if (!/^[\w.]+$/.test(m[1]) || !CALL_ALLOWED.test(m[1])) return { ok: false, reason: `Procédure interdite : ${m[1]} (seules les procédures de lecture db.* / dbms.components|listConfig|queryJmx sont admises).` };
   }
-  if (/\bapoc\./i.test(noIdent)) return { ok: false, reason: "apoc.* n'est pas admis dans la console." };
+  if (/\bapoc\./i.test(unquoted)) return { ok: false, reason: "apoc.* n'est pas admis dans la console." };
   if (/^\s*(show|use)\b/i.test(noIdent)) return { ok: false, reason: "SHOW / USE : utilisez les onglets dédiés (SHOW TRANSACTIONS, SHOW INDEXES...)." };
   if (!/^\s*(match|optional|with|return|unwind|call|profile|explain)\b/i.test(noIdent)) return { ok: false, reason: "La requête doit commencer par MATCH / OPTIONAL MATCH / WITH / UNWIND / RETURN / CALL (lecture)." };
   // LIMIT: cap an existing trailing one (comments ignored), append after a final RETURN otherwise.
