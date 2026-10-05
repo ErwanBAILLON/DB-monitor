@@ -218,7 +218,9 @@ export function guardCql(input: string): CqlGuard {
   const body = stripped.replace(/^\s*[A-Za-z]+/, "").replace(/"[^"]*"/g, ' "" ');
   const hit = body.match(CQL_FORBIDDEN);
   if (hit) return { ok: false, reason: `Mot-clé interdit : ${hit[1].toUpperCase()}.` };
-  if (/\bsystem_auth\b/i.test(body)) return { ok: false, reason: "system_auth (hash des mots de passe) n'est pas consultable." };
+  // Checked on `stripped` (quoted identifiers kept): "system_auth".roles is the same keyspace
+  // as system_auth.roles in CQL, so the exclusion must see through the double quotes.
+  if (/system_auth/i.test(stripped)) return { ok: false, reason: "system_auth (hash des mots de passe) n'est pas consultable." };
   // LIMIT: cap an existing one, append otherwise (before ALLOW FILTERING if present).
   const m = raw.match(/\blimit\s+(\d+)\s*(allow\s+filtering)?\s*$/i);
   let cql = raw;

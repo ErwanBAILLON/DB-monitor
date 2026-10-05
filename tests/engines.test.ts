@@ -247,6 +247,11 @@ describe("cassandra parsers and CQL guard", () => {
     ko("SELECT * FROM t; DROP TABLE t", /Une seule/);
     ko("SELECT * FROM t WHERE a = 'x", /Littéral/);
     ko("SELECT * FROM system_auth.roles", /system_auth/);
+    // A quoted lowercase identifier is the same keyspace: no bypass through double quotes.
+    ko('SELECT * FROM "system_auth".roles', /system_auth/);
+    ko('SELECT role, salted_hash FROM "system_auth"."roles"', /system_auth/);
+    ko("SELECT * FROM SYSTEM_AUTH.roles", /system_auth/);
+    ok("SELECT * FROM t WHERE name = 'system_auth'");
     ko("SELECT * FROM t LIMIT :n", /LIMIT/);
     ko('SELECT "DROP"(1) FROM t', /guillemets/);
   });

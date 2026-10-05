@@ -58,6 +58,7 @@ describe.skipIf(!url)("cassandra driver against ScyllaDB (integration)", () => {
     await expect(cs.readOnlyQuery(conn, `TRUNCATE ${KS}.events`)).rejects.toThrow(/SELECT/);
     await expect(cs.readOnlyQuery(conn, `SELECT * FROM ${KS}.events; DROP KEYSPACE ${KS}`)).rejects.toThrow(/Une seule/);
     await expect(cs.readOnlyQuery(conn, "SELECT * FROM system_auth.roles")).rejects.toThrow(/system_auth/);
+    await expect(cs.readOnlyQuery(conn, 'SELECT role, salted_hash FROM "system_auth".roles')).rejects.toThrow(/system_auth/);
     await expect(cs.readOnlyQuery(conn, "SELECT * FROM nope.nope")).rejects.toThrow(/nope|exist/i);
     // Still 50 rows: nothing above wrote.
     expect((await cs.readOnlyQuery(conn, `SELECT count(*) AS n FROM ${KS}.events`)).rows[0].n).toBe("50");
