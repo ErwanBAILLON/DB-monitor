@@ -30,6 +30,6 @@ function reg(engine: EngineType, load: () => Promise<{ explorer: Explorer }>) {
 
 // --- registrations ------------------------------------------------------------
 // One line per engine, added by that engine's commit. Keep both lines on a merge conflict.
-void reg;
+reg("postgres", () => import("./postgres"));
 
 export const explorerEngines = (): EngineType[] => ENGINES.filter((e) => HAS_EXPLORER[e]);

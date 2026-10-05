@@ -163,30 +163,39 @@ export async function terminateBackend(c: Conn, pid: number): Promise<boolean> {
   });
 }
 
-// Read-only query: guard + READ ONLY transaction + statement_timeout + row cap.
-export async function readOnlyQuery(c: Conn, sql: string, database?: string): Promise<QueryResult> {
-  const g = guardReadOnly(sql);
-  if (!g.ok) throw new Error(g.reason);
+// Read-only execution path shared by the console and the explorer: one connection,
+// BEGIN READ ONLY + statement_timeout, always rolled back. `fn` may run several
+// parametrised statements.
+export async function readOnlyExec<T>(c: Conn, database: string | undefined, fn: (client: Client) => Promise<T>): Promise<T> {
   return withPg(
     c,
     async (client) => {
-      const t0 = Date.now();
       await client.query("BEGIN READ ONLY");
       try {
         await client.query(`SET LOCAL statement_timeout = ${QUERY_TIMEOUT_MS}`);
-        const r = await client.query({ text: g.sql, rowMode: "array" });
-        const rows = (r.rows as unknown[][]).slice(0, MAX_ROWS).map((arr) => {
-          const o: Row = {};
-          r.fields.forEach((f, i) => (o[f.name] = arr[i]));
-          return plainRow(o);
-        });
-        return { columns: r.fields.map((f) => f.name), rows, rowCount: r.rowCount ?? rows.length, durationMs: Date.now() - t0, truncated: (r.rows?.length ?? 0) > MAX_ROWS };
+        return await fn(client);
       } finally {
         await client.query("ROLLBACK").catch(() => undefined);
       }
     },
     database,
   );
+}
+
+// Read-only query: guard + READ ONLY transaction + statement_timeout + row cap.
+export async function readOnlyQuery(c: Conn, sql: string, database?: string): Promise<QueryResult> {
+  const g = guardReadOnly(sql);
+  if (!g.ok) throw new Error(g.reason);
+  return readOnlyExec(c, database, async (client) => {
+    const t0 = Date.now();
+    const r = await client.query({ text: g.sql, rowMode: "array" });
+    const rows = (r.rows as unknown[][]).slice(0, MAX_ROWS).map((arr) => {
+      const o: Row = {};
+      r.fields.forEach((f, i) => (o[f.name] = arr[i]));
+      return plainRow(o);
+    });
+    return { columns: r.fields.map((f) => f.name), rows, rowCount: r.rowCount ?? rows.length, durationMs: Date.now() - t0, truncated: (r.rows?.length ?? 0) > MAX_ROWS };
+  });
 }
 
 const IDENT = /^[a-z_][a-z0-9_]{0,62}$/;
