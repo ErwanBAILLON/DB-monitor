@@ -307,7 +307,15 @@ describe("influxdb parsers and Flux guard", () => {
     ko('import "sql"\nsql.from(driverName: "postgres", dataSourceName: "", query: "")', /sql|Import/);
     ko('import "influxdata/influxdb/secrets"\nsecrets.get(key: "k")', /secrets|Import/);
     ko('import "slack"\nfrom(bucket:"m") |> range(start:-1h)', /Import|notification/);
-    ko('from(bucket: "m") |> range(start: -1h) |> wideTo(bucket: "x")', /wideTo/);
+    ko('from(bucket: "m") |> range(start: -1h) |> wideTo(bucket: "x")', /to\(\)|wideTo/);
+    // Functions are values: aliasing to() must not reach a bucket write.
+    ko('t = to\nfrom(bucket:"b")|>range(start:-1h)|>t(bucket:"c")', /to\(\)/);
+    ko('w = wideTo\nfrom(bucket:"b")|>range(start:-1h)|>w(bucket:"c")', /to\(\)|wideTo/);
+    ko('f = (x) => x\nfrom(bucket:"b")|>range(start:-1h)|>f(x: to)(bucket:"c")', /to\(\)/);
+    ko('import "universe"\nu = universe.to\nfrom(bucket:"b")|>range(start:-1h)|>u(bucket:"c")', /Import|to\(\)/);
+    ok('from(bucket: "m") |> range(start: -1h) |> filter(fn: (r) => r.to == "x")');
+    ok('from(bucket: "m") |> range(start: -1h) |> map(fn: (r) => ({r with to: r._value}))');
+    ok('from(bucket: "m") |> range(start: -1h) |> keep(columns: ["to", "_time"])');
     ko('from(bucket: "m") |> range(start: -1h) |> filter(fn: (r) => r.a == "unterminated)', /Littéral/);
   });
 });

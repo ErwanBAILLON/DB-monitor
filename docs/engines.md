@@ -189,7 +189,7 @@ server-side read-only mode, the token's scopes are the real barrier.
 
 Console guard (`guardFlux`): `range()` required unless the query is a schema
 helper (`buckets()`, `schema.*`, `influxdb.cardinality`, `v1.*`); refused
-anywhere: `to()`, `wideTo()`, `experimental`, `http`, `sql`, `secrets`,
+anywhere: `to` and `wideTo` as bare identifiers (call or alias such as `t = to`), `experimental`, `http`, `sql`, `secrets`,
 `contrib`, `influxdb.api`, `monitor.notify/check`, every notification package
 (`slack`, `pagerduty`, `discord`, `smtp`, `kafka`, `mqtt`...), `exec`;
 `import "..."` only from an allowlist of pure packages (`strings`, `regexp`,

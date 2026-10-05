@@ -198,15 +198,18 @@ export type FluxGuard = { ok: true; flux: string } | { ok: false; reason: string
 // experimental/http/sql/secrets packages, buckets()/tasks management helpers with side
 // effects, and anything that could reach another system. `range()` is required so that an
 // unbounded scan cannot be submitted; `limit(n: 200)` is appended.
+// Functions are first-class values (`t = to` then `|> t(bucket: ...)`), so the writer
+// functions are refused as bare identifiers in any position, not only in call shape. A record
+// key (`{to: 1}`) or a field access (`r.to`) stays allowed.
 const FLUX_FORBIDDEN = [
-  [/\bto\s*\(/, "to()"],
+  [/(?<![.\w])(to|wideTo)\b(?!\s*:)/, "to()"],
   [/\bexperimental\b/, "experimental.*"],
   [/\bhttp\b/, "http.*"],
   [/\bsql\b/, "sql.*"],
   [/\bsecrets\b/, "secrets"],
   [/\bcontrib\b/, "contrib.*"],
   [/\bbuckets\s*\.\s*(create|delete|update)|\bcreateBucket|\bdeleteBucket/, "gestion des buckets"],
-  [/\binfluxdb\s*\.\s*(api|wideTo)\b|\bwideTo\s*\(/, "influxdb.api / wideTo"],
+  [/\binfluxdb\s*\.\s*(api|wideTo)\b/, "influxdb.api / wideTo"],
   [/\bmonitor\s*\.\s*(notify|check)\b/, "monitor.notify / check"],
   [/\bslack\b|\bpagerduty\b|\bdiscord\b|\bopsgenie\b|\btelegram\b|\bteams\b|\bsensu\b|\bvictorops\b|\bbigpanda\b|\bzenoss\b|\bservicenow\b|\bmqtt\b|\bkafka\b|\bsmtp\b|\bsendgrid\b|\bmailgun\b|\bwebexteams\b|\bpushbullet\b/, "paquet de notification"],
   [/\bexec\b|\bsystem\s*\.\s*time\s*\(\s*\)\s*\(/, "exécution"],
@@ -222,7 +225,7 @@ export function guardFlux(input: string): FluxGuard {
   for (const [re, label] of FLUX_FORBIDDEN) if (re.test(stripped)) return { ok: false, reason: `Interdit dans la console : ${label}.` };
   // `import "x"` only from the allowlist (strings were stripped: check the raw text).
   for (const m of raw.matchAll(/import\s+"([^"]+)"/g)) {
-    if (!/^(strings|regexp|math|date|json|array|dict|types|universe|influxdata\/influxdb(\/schema|\/v1)?|timezone|runtime|sampledata|generate|interpolate|join|profiler|table|timezone|internal\/[a-z]+)$/.test(m[1])) return { ok: false, reason: `Import interdit : ${m[1]}.` };
+    if (!/^(strings|regexp|math|date|json|array|dict|types|influxdata\/influxdb(\/schema|\/v1)?|timezone|runtime|sampledata|generate|interpolate|join|profiler|table|timezone|internal\/[a-z]+)$/.test(m[1])) return { ok: false, reason: `Import interdit : ${m[1]}.` };
   }
   if (!/\brange\s*\(/.test(stripped) && !/\b(buckets|schema\.\w+|influxdb\.cardinality|sampledata\.\w+|generate\.from|array\.from|v1\.\w+)\s*\(/.test(stripped)) return { ok: false, reason: "range() est obligatoire (fenêtre temporelle bornée)." }
   return { ok: true, flux: `${raw}\n  |> limit(n: ${CONSOLE_LIMIT})` };
