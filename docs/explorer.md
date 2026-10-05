@@ -155,6 +155,51 @@ Audit actions: `explore.describe`, `explore.browse`, `explore.profile`,
   `tests/integration/mysql.explore.test.ts` (`TEST_MARIADB_URL` /
   `TEST_MYSQL_URL`).
 
+### SQLite (`sqlite`)
+
+- Containers: one per file, named `main` (file size, table + view count,
+  journal mode, encoding, page size). Attached databases are not explored:
+  the driver opens the file alone, read-only.
+- Objects: tables, virtual tables and views of `sqlite_master` (`sqlite_%`
+  internal tables hidden) with an exact `count(*)` (full scan: slow on very
+  large files), `dbstat` size when the build includes
+  `SQLITE_ENABLE_DBSTAT_VTAB` (null otherwise), `WITHOUT ROWID` / `STRICT`
+  flags, virtual table module; last modified = file mtime.
+- Structure: `PRAGMA table_xinfo` (declared type = affinity, nullable,
+  default, PK, hidden/generated columns; `INTEGER PRIMARY KEY` shown as not
+  nullable since it aliases the rowid), `index_list` + `index_xinfo`
+  (columns, unique, origin CREATE INDEX / UNIQUE / PRIMARY KEY, partial,
+  `sqlite_stat1` row when ANALYZE ran), constraints: PK, UNIQUE (from the
+  implicit indexes), FK from `foreign_key_list` (grouped per id, with ON
+  UPDATE / ON DELETE), CHECK clauses parsed from the `CREATE TABLE` text.
+  Storage: rows, dbstat table/index bytes, without_rowid, strict, file size
+  and mtime, whether ANALYZE ran; one sample row; the full definition in the
+  notes.
+- Données: `SELECT "cols" FROM "table" WHERE ... ORDER BY ... LIMIT ? OFFSET ?`
+  bound through node-sqlite3-wasm on the handle opened
+  `SQLITE_OPEN_READONLY` (library-enforced). Column affinity applies to the
+  bound text value (`amount >= "100"` compares numerically on a REAL
+  column). Total = exact `count(*)`. No server-side timeout exists: SQLite
+  runs inside the pod, pages are capped at 100 rows.
+- Profil: first 10 000 rows in storage order (rowid), `count(DISTINCT)`,
+  min/max, top 10.
+- Statistiques (file-wide, container ignored): file + pragmas (page_size,
+  page_count, freelist and its %, journal_mode, auto_vacuum, encoding,
+  user/schema version, cache/mmap, quick_check), tables (rows, columns,
+  indexes, size, without_rowid, strict), indexes with `sqlite_stat1`,
+  tables without a declared PK, `PRAGMA foreign_key_check` violations
+  (first 50; SQLite does not enforce FKs unless `foreign_keys` is ON),
+  version + selected compile options.
+- Deliberately not shown: attached databases, `sqlite_%` internal tables,
+  BLOB contents beyond the 4 KiB cell truncation. `dbstat` and
+  `sqlite_stat1` sections degrade to null / empty rather than failing.
+- Tested against: node-sqlite3-wasm (SQLite 3.x bundled) by
+  `tests/integration/sqlite.explore.test.ts`, which builds its own temporary
+  fixture (3 tables, 10 000 orders, a WITHOUT ROWID table, a view) and always
+  runs; `TEST_SQLITE_URL=file:/path.db` adds a smoke run on an existing file.
+  In prod the registered instance `sample-sqlite` (`/data/sqlite/sample.db`,
+  written at pod start) is the one shown in the Explorer tab.
+
 ### Template for the other engines
 
 ```
