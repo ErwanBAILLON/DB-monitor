@@ -15,6 +15,7 @@ import { Neo4jTabs, neo4jTabList } from "./neo4j";
 import { EtcdTabs, etcdTabList } from "./etcd";
 import { RabbitmqTabs, rabbitmqTabList } from "./rabbitmq";
 import { S3Tabs, s3TabList } from "./s3";
+import { OracleTabs, oracleTabList } from "./oracle";
 
 export type TabDef = { key: string; label: string };
 export type EngineTabs = { tabs: TabDef[]; render: (p: { inst: Instance; conn: Conn; tab: string }) => Promise<React.ReactNode> };
@@ -36,4 +37,5 @@ export const ENGINE_TABS: Record<EngineType, EngineTabs> = {
   etcd: { tabs: etcdTabList, render: EtcdTabs },
   rabbitmq: { tabs: rabbitmqTabList, render: RabbitmqTabs },
   s3: { tabs: s3TabList, render: S3Tabs },
+  oracle: { tabs: oracleTabList, render: OracleTabs },
 };

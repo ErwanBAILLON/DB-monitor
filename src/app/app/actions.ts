@@ -21,6 +21,7 @@ import * as sqlite from "@/lib/drivers/sqlite";
 import * as cassandra from "@/lib/drivers/cassandra";
 import * as influxdb from "@/lib/drivers/influxdb";
 import * as neo4j from "@/lib/drivers/neo4j";
+import * as oracle from "@/lib/drivers/oracle";
 import type { QueryResult } from "@/lib/drivers/types";
 import type { Prisma } from "@prisma/client";
 
@@ -189,6 +190,7 @@ export async function runReadOnlyQuery(id: string, fd: FormData): Promise<{ ok: 
       cassandra: cassandra.readOnlyQuery,
       influxdb: influxdb.readOnlyQuery,
       neo4j: neo4j.readOnlyQuery,
+      oracle: oracle.readOnlyQuery,
     };
     const run = RUNNERS[inst.type];
     if (!run) throw new Error("Pas de console de requête sur ce moteur.");
@@ -363,6 +365,22 @@ export async function neoTerminate(fd: FormData): Promise<Result> {
     const r = await audited({ actor, instance: inst, action: "neo4j.terminate_transaction", params: { transactionId } }, () => neo4j.terminateTransaction(connOf(inst), transactionId), (r) => r);
     revalidatePath(`/app/instances/${inst.id}`);
     return { ok: true, message: `TERMINATE TRANSACTIONS ${transactionId} : ${r}.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// --- oracle --------------------------------------------------------------------
+
+export async function oraKillSession(fd: FormData): Promise<Result> {
+  try {
+    const actor = await requireAdmin();
+    const inst = await instanceOr404(String(fd.get("id")));
+    const sid = Number(fd.get("sid"));
+    const serial = Number(fd.get("serial"));
+    await audited({ actor, instance: inst, action: "oracle.kill_session", params: { sid, serial } }, () => oracle.killSession(connOf(inst), sid, serial));
+    revalidatePath(`/app/instances/${inst.id}`);
+    return { ok: true, message: `Session ${sid},${serial} tuée (ALTER SYSTEM KILL SESSION IMMEDIATE).` };
   } catch (err) {
     return fail(err);
   }

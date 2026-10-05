@@ -315,3 +315,41 @@ MinIO console or `mc du` for exact figures.
 
 Version: S3 has no version call; the `Server` response header of an
 unauthenticated `GET /` (`MinIO`, `AmazonS3`...) is shown instead.
+
+## Oracle Database (`oracle`, listener 1521, node-oracledb thin mode)
+
+Thin mode is pure JavaScript: no Instant Client in the image. The instance's
+"database" field is the **service name** (`FREEPDB1` for the Free image; a PDB
+or the CDB root `FREE`). TLS = `tcps://` without server DN match.
+
+| Need | Privilege |
+|---|---|
+| Probe and tabs (`v$instance`, `v$database`, `v$session`, `v$sql`, `v$resource_limit`, `v$parameter`, `v$pdbs`, `v$session_longops`, `dba_data_files`, `dba_tablespaces`, `dba_tablespace_usage_metrics`) | `SELECT_CATALOG_ROLE` (or `SELECT ANY DICTIONARY`) |
+| Kill session | **`ALTER SYSTEM`** system privilege (`GRANT ALTER SYSTEM TO dbmon`): the action runs `ALTER SYSTEM KILL SESSION 'sid,serial#' IMMEDIATE`; it refuses the console's own session |
+| Read-only console | `SELECT` on the target objects (`SELECT ANY TABLE` or `READ ANY TABLE` for a broad console) |
+
+```sql
+CREATE USER dbmon IDENTIFIED BY "...";
+GRANT CREATE SESSION, SELECT_CATALOG_ROLE, READ ANY TABLE TO dbmon;
+GRANT ALTER SYSTEM TO dbmon;   -- only if the kill action is wanted
+```
+
+`ALTER SYSTEM` is a powerful privilege (it also allows `ALTER SYSTEM SET ...`):
+grant it to the registered user only when the kill action is needed, and
+otherwise register with a `SELECT_CATALOG_ROLE`-only account, the action then
+fails with ORA-01031 and nothing else changes. Inside a PDB
+`v$resource_limit` is empty: the SESSIONS/PROCESSES parameters are used for
+the connection gauge.
+
+Console guard (`guardOracle`): the generic SQL guard (single SELECT/WITH,
+DML/DDL keywords, `FOR UPDATE`, multiple statements, quoted-identifier calls)
+plus: PL/SQL blocks and calls refused as first keyword (`BEGIN`, `DECLARE`,
+`CALL`, `EXEC`, `EXECUTE`), `DBMS_*`, `UTL_*`, `EXECUTE IMMEDIATE`,
+`HTTPURITYPE`, `CTX_*`, `APEX_*`, `ORDS_*` and `q'...'` literals refused
+anywhere. The statement runs after `SET TRANSACTION READ ONLY` (Oracle refuses
+any DML in it with ORA-01456, verified in the integration test by bypassing
+the guard), `callTimeout` 5 s (the driver cancels the round-trip: `NJS-123`),
+500 rows, then `ROLLBACK`. Note that `SET TRANSACTION READ ONLY` does not stop
+DDL (auto-commits) nor functions with autonomous transactions: the guard and
+the user's privileges are the barriers there. Snapshot caveat: a table created
+less than a second before a READ ONLY query raises ORA-01466.

@@ -16,6 +16,7 @@ import * as neo4j from "@/lib/drivers/neo4j";
 import * as etcd from "@/lib/drivers/etcd";
 import * as rabbitmq from "@/lib/drivers/rabbitmq";
 import * as s3 from "@/lib/drivers/s3";
+import * as oracle from "@/lib/drivers/oracle";
 import { DEFAULT_PORT, ENGINES, type Conn, type EngineType, type Probe } from "@/lib/drivers/types";
 import { assertAllowedTarget } from "@/lib/targets";
 
@@ -68,6 +69,8 @@ export function probe(c: Conn): Promise<Probe> {
       return rabbitmq.probe(c);
     case "s3":
       return s3.probe(c);
+    case "oracle":
+      return oracle.probe(c);
   }
 }
 

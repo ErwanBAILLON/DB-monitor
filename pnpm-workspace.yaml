@@ -12,6 +12,8 @@ onlyBuiltDependencies:
 strictDepBuilds: true
 ignoredBuiltDependencies:
   - core-js
+  # oracledb: thin mode only (pure JS), the optional native build is not needed.
+  - oracledb
 
 # Never install a version published less than 7 days ago.
 minimumReleaseAge: 10080

@@ -403,3 +403,41 @@ describe("s3 helpers", () => {
     client.destroy();
   });
 });
+
+describe("oracle parsers and guard", () => {
+  it("builds the probe from v$instance / v$database / v$resource_limit", async () => {
+    const { fromInstance, lowerKeys } = await import("@/lib/drivers/oracle");
+    const p = fromInstance({ version_full: "23.0.0.0.0", status: "OPEN", uptime_sec: 123.6 }, { database_role: "PRIMARY", open_mode: "READ WRITE" }, 3, { limit_value: "472" }, 1_000_000n);
+    expect(p).toEqual({ version: "23.0.0.0.0", uptimeSec: 124, connUsed: 3, connMax: 472, sizeBytes: 1_000_000n, role: "primary · read write" });
+    expect(fromInstance({ version: "19.0.0.0.0", status: "MOUNTED" }, {}, 0, { limit_value: "UNLIMITED" }, undefined)).toMatchObject({ version: "19.0.0.0.0", uptimeSec: undefined, connMax: undefined, role: "? · ? · mounted" });
+    expect(lowerKeys({ SID: 1, "SERIAL#": 2 })).toEqual({ sid: 1, "serial#": 2 });
+  });
+  it("Oracle guard: SELECT only, no PL/SQL, no DBMS_/UTL_, no EXECUTE IMMEDIATE", async () => {
+    const { guardOracle } = await import("@/lib/drivers/oracle");
+    const ok = (s: string) => expect(guardOracle(s).ok, s).toBe(true);
+    const ko = (s: string, re: RegExp) => {
+      const r = guardOracle(s);
+      expect(r.ok, s).toBe(false);
+      if (!r.ok) expect(r.reason).toMatch(re);
+    };
+    ok("SELECT * FROM v$instance");
+    ok("SELECT owner, count(*) FROM dba_tables GROUP BY owner;");
+    ok("WITH t AS (SELECT 1 AS x FROM dual) SELECT x FROM t");
+    ok("SELECT * FROM dba_segments FETCH FIRST 10 ROWS ONLY");
+    ok("SELECT 'dbms_lock' AS s FROM dual");
+    ko("BEGIN DBMS_LOCK.SLEEP(10); END;", /PL\/SQL/);
+    ko("DECLARE x NUMBER; BEGIN NULL; END;", /PL\/SQL/);
+    ko("EXEC DBMS_OUTPUT.PUT_LINE('x')", /PL\/SQL/);
+    ko("CALL dbms_stats.gather_schema_stats('X')", /PL\/SQL/);
+    ko("SELECT dbms_lock.sleep(5) FROM dual", /DBMS_LOCK|sleep/);
+    ko("SELECT utl_http.request('http://x') FROM dual", /UTL_HTTP/);
+    ko("SELECT utl_inaddr.get_host_address FROM dual", /UTL_INADDR/);
+    ko("SELECT httpuritype('http://x').getclob() FROM dual", /HTTPURITYPE/);
+    ko("SELECT * FROM t WHERE x = q'[a]'", /q'/);
+    ko("UPDATE t SET a = 1", /SELECT/);
+    ko("SELECT * FROM t FOR UPDATE", /Verrous|UPDATE/);
+    ko("SELECT * FROM t; DROP TABLE t", /Une seule/);
+    ko("SELECT dbms_random.value FROM dual", /DBMS_RANDOM/);
+    ko("SELECT * FROM TABLE(dbms_xplan.display)", /DBMS_XPLAN/);
+  });
+});

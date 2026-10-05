@@ -20,6 +20,7 @@ const HOST_HINT: Record<EngineType, string> = {
   etcd: "etcd.projects.svc.cluster.local (port client)",
   rabbitmq: "rabbitmq.projects.svc.cluster.local (port management 15672)",
   s3: "minio.storage.svc.cluster.local (API S3 9000)",
+  oracle: "oracle.projects.svc.cluster.local (listener 1521)",
 };
 const USER_HINT: Record<EngineType, string> = {
   postgres: "dbmon",
@@ -37,6 +38,7 @@ const USER_HINT: Record<EngineType, string> = {
   etcd: "vide sans auth, sinon un utilisateur avec rôle lecture",
   rabbitmq: "utilisateur avec le tag monitoring",
   s3: "access key en lecture seule (secret key dans mot de passe)",
+  oracle: "SYSTEM ou un compte SELECT_CATALOG_ROLE (+ ALTER SYSTEM pour kill)",
 };
 
 export function InstanceForm({ instance, action, submitLabel }: { instance?: Instance; action: (fd: FormData) => Promise<void>; submitLabel: string }) {

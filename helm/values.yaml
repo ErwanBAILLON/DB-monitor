@@ -133,8 +133,8 @@ networkPolicy:
     - namespace: database
       ports: [5432]
     - namespace: projects
-      # postgres, redis, mysql/mariadb, mongodb, clickhouse http, opensearch http, sql server, cockroach, cassandra/scylla cql, influxdb http, neo4j bolt, etcd client, rabbitmq management
-      ports: [5432, 6379, 3306, 27017, 8123, 9200, 1433, 26257, 9042, 8086, 7687, 2379, 15672]
+      # postgres, redis, mysql/mariadb, mongodb, clickhouse http, opensearch http, sql server, cockroach, cassandra/scylla cql, influxdb http, neo4j bolt, etcd client, rabbitmq management, oracle listener
+      ports: [5432, 6379, 3306, 27017, 8123, 9200, 1433, 26257, 9042, 8086, 7687, 2379, 15672, 1521]
     - namespace: argocd
       ports: [6379]
     - namespace: monitoring

@@ -3,7 +3,9 @@
 Fleet console for heterogeneous databases: one UI to see and operate every
 database server of the homelab (PostgreSQL, CockroachDB, MySQL/MariaDB,
 Redis-compatible, MongoDB, ClickHouse, OpenSearch/Elasticsearch, SQL Server,
-SQLite files).
+SQLite files, Cassandra/ScyllaDB, InfluxDB 2, Neo4j 5, etcd, Oracle Free), plus
+a message broker (RabbitMQ) and an object store (MinIO/S3), grouped by
+category on the fleet overview.
 
 Successor of the 2023 docker-compose prototype (CloudBeaver + one container per
 engine): the goal is the same, "several kinds of databases, managed easily at
@@ -31,6 +33,7 @@ real instances over the network.
 | etcd v3 (read-only) | version, dbSize vs quota (instance "database" field = `--quota-backend-bytes`, default 2 GiB), key count, leader/follower + members + alarms | cluster (status, members, alarms, quota gauge), keys per top-level prefix (keys_only scan capped at 5000 keys, then exact count_only per prefix; values never read) | none (by design) | none | quay.io/coreos/etcd:v3.5.17 (single node, no auth) |
 | RabbitMQ (broker) | version + erlang, node uptime, connections / sockets_total, memory used vs vm_memory_high_watermark (fleet gauge), nodes + queues + consumers, memory/disk alarms | broker (totals, overview, nodes with alarms), queues (ready/unacked/consumers/memory), connections, channels, exchanges + vhosts | none (no purge, no delete, by design) | none | rabbitmq:3.13-management-alpine (3.13.7) |
 | MinIO / S3 (object store) | ListBuckets latency, `Server` header (MinIO), bucket count | buckets with object count and size (ListObjectsV2 paginated, capped at 5000 objects per bucket then ">="), region, versioning, created | none (read-only key, by design) | none | homelab MinIO quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z (ns storage, read-only key) |
+| Oracle Database (Free 23ai+) | version_full, uptime (startup_time), user sessions / SESSIONS limit (v$resource_limit, v$parameter in a PDB), data files bytes, role + open mode | instance (v$instance, v$database, resource limits, PDBs, parameters), tablespaces (dba_tablespace_usage_metrics), sessions (+ current SQL), long operations (v$session_longops), SQL console | ALTER SYSTEM KILL SESSION ... IMMEDIATE | guard (SELECT/WITH, no PL/SQL block, no DBMS_*/UTL_*/EXECUTE IMMEDIATE/HTTPURITYPE) + `SET TRANSACTION READ ONLY` (server-enforced, ORA-01456) + callTimeout 5 s + 500 rows | gvenzl/oracle-free:23-slim (23.0.0.0.0, thin mode, no Instant Client) |
 | Cassandra / ScyllaDB | scylla or cassandra version, uptime (runtime_info, else gossip_generation), clients (system.clients / system_views.clients), DC/rack + node count, estimated data size (size_estimates) | node (system.local, runtime_info, peers), keyspaces, tables (+ size estimates), clients, compaction/streams (when exposed), CQL console | none | CQL guard (SELECT only, LIMIT forced <= 200, system_auth excluded) + `LOCAL_ONE` + readTimeout 5 s | scylladb/scylla:6.1 (6.1.5, single node, no auth) |
 
 Every row above was exercised against a live server by
@@ -155,7 +158,7 @@ pnpm exec prisma migrate dev
 pnpm test                 # unit: crypto, SQL guard, thresholds, parsers (tests/unit.test.ts, tests/engines.test.ts)
 pnpm test:integration     # postgres: TEST_PG_URL or the local 5490 server; sqlite: always (temp file);
                           # other engines run only when their URL is set and are skipped otherwise:
-                          # TEST_CASSANDRA_URL (cql://[user:pw@]host:port), TEST_INFLUX_URL (http://:TOKEN@host:port/ORG), TEST_NEO4J_URL (bolt://user:pw@host:port), TEST_ETCD_URL (http://host:port), TEST_RABBITMQ_URL (http://user:pw@host:15672), TEST_S3_URL (http://ACCESS:SECRET@host:9000),
+                          # TEST_CASSANDRA_URL (cql://[user:pw@]host:port), TEST_INFLUX_URL (http://:TOKEN@host:port/ORG), TEST_NEO4J_URL (bolt://user:pw@host:port), TEST_ETCD_URL (http://host:port), TEST_RABBITMQ_URL (http://user:pw@host:15672), TEST_S3_URL (http://ACCESS:SECRET@host:9000), TEST_ORACLE_URL (oracle://SYSTEM:pw@host:1521/FREEPDB1),
                           # TEST_MARIADB_URL / TEST_MYSQL_URL (mysql://user:pw@host:port), TEST_MONGO_URL,
                           # TEST_CLICKHOUSE_URL (http://user:pw@host:8123), TEST_VALKEY_URL (redis://:pw@host:port),
                           # TEST_COCKROACH_URL (postgresql://root@host:26257/defaultdb), TEST_OPENSEARCH_URL, TEST_MSSQL_URL
