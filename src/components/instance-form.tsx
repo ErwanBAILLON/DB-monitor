@@ -18,6 +18,7 @@ const HOST_HINT: Record<EngineType, string> = {
   influxdb: "influxdb.projects.svc.cluster.local (port HTTP)",
   neo4j: "neo4j.projects.svc.cluster.local (port Bolt)",
   etcd: "etcd.projects.svc.cluster.local (port client)",
+  rabbitmq: "rabbitmq.projects.svc.cluster.local (port management 15672)",
 };
 const USER_HINT: Record<EngineType, string> = {
   postgres: "dbmon",
@@ -33,6 +34,7 @@ const USER_HINT: Record<EngineType, string> = {
   influxdb: "(ignoré : le token va dans le mot de passe)",
   neo4j: "neo4j ou un utilisateur reader + admin pour TERMINATE",
   etcd: "vide sans auth, sinon un utilisateur avec rôle lecture",
+  rabbitmq: "utilisateur avec le tag monitoring",
 };
 
 export function InstanceForm({ instance, action, submitLabel }: { instance?: Instance; action: (fd: FormData) => Promise<void>; submitLabel: string }) {

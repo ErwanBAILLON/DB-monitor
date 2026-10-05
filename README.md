@@ -29,6 +29,7 @@ real instances over the network.
 | InfluxDB 2.x | version (/health), uptime (/ready `up`), orgs + user buckets count | server (/health, /ready, orgs), buckets (retention, shard group, 30-day series cardinality), tasks (+ last run status/error), Flux console | none | Flux guard (range() required, `to()`/experimental/http/sql/secrets/notification packages refused, imports allowlisted) + `limit(n: 200)` appended + 5 s HTTP timeout | influxdb:2.7 (2.7.12) |
 | Neo4j 5 | kernel version + edition, JVM uptime (JMX), connections (dbms.listConnections) / bolt thread pool max, databases online/offline | databases (+ store size when the Enterprise metric exists), transactions (SHOW TRANSACTIONS), graph counts (nodes, relationships, per label/type), indexes + constraints, connections, Cypher console | TERMINATE TRANSACTIONS | Cypher guard (read clauses only, CREATE/MERGE/DELETE/SET/REMOVE/LOAD CSV/DROP refused, CALL allowlisted to db.* readers, no apoc.*) + session access mode READ (server-enforced) + transaction timeout 5 s + LIMIT 200 | neo4j:5 (5.26.31 community) |
 | etcd v3 (read-only) | version, dbSize vs quota (instance "database" field = `--quota-backend-bytes`, default 2 GiB), key count, leader/follower + members + alarms | cluster (status, members, alarms, quota gauge), keys per top-level prefix (keys_only scan capped at 5000 keys, then exact count_only per prefix; values never read) | none (by design) | none | quay.io/coreos/etcd:v3.5.17 (single node, no auth) |
+| RabbitMQ (broker) | version + erlang, node uptime, connections / sockets_total, memory used vs vm_memory_high_watermark (fleet gauge), nodes + queues + consumers, memory/disk alarms | broker (totals, overview, nodes with alarms), queues (ready/unacked/consumers/memory), connections, channels, exchanges + vhosts | none (no purge, no delete, by design) | none | rabbitmq:3.13-management-alpine (3.13.7) |
 | Cassandra / ScyllaDB | scylla or cassandra version, uptime (runtime_info, else gossip_generation), clients (system.clients / system_views.clients), DC/rack + node count, estimated data size (size_estimates) | node (system.local, runtime_info, peers), keyspaces, tables (+ size estimates), clients, compaction/streams (when exposed), CQL console | none | CQL guard (SELECT only, LIMIT forced <= 200, system_auth excluded) + `LOCAL_ONE` + readTimeout 5 s | scylladb/scylla:6.1 (6.1.5, single node, no auth) |
 
 Every row above was exercised against a live server by
@@ -41,7 +42,7 @@ console guard at both layers) before being shipped. Permissions per engine:
 | Area | Details |
 |---|---|
 | Registry | Add / edit / delete instances (type, host, port, credentials, default db, TLS, environment, tags). Test connection before saving. |
-| Fleet overview | One card per instance: up/down, latency sparkline, version, uptime, role (primary/replica), connections used/max, total size or Redis memory vs maxmemory, last check, 24 h availability. Auto-refresh every 30 s. |
+| Fleet overview | Cards grouped by category (databases, caches, brokers, object stores). One card per instance: up/down, latency sparkline, version, uptime, role (primary/replica), connections used/max, total size or Redis memory vs maxmemory, last check, 24 h availability. Auto-refresh every 30 s. |
 | Checks | In-process checker every 30 s, history kept 7 days (`Check` table). |
 | PostgreSQL detail | Databases with sizes, roles, `pg_stat_activity` with terminate action, long queries (> 5 s), waiting/exclusive locks, top tables by size with dead-tuple ratio, settings of interest, installed extensions. |
 | Redis detail | INFO sections, keyspace per db, memory, clients (CLIENT LIST), SLOWLOG, key browser via SCAN (never KEYS) with TTL and delete. FLUSHDB/FLUSHALL are not offered. |
@@ -153,7 +154,7 @@ pnpm exec prisma migrate dev
 pnpm test                 # unit: crypto, SQL guard, thresholds, parsers (tests/unit.test.ts, tests/engines.test.ts)
 pnpm test:integration     # postgres: TEST_PG_URL or the local 5490 server; sqlite: always (temp file);
                           # other engines run only when their URL is set and are skipped otherwise:
-                          # TEST_CASSANDRA_URL (cql://[user:pw@]host:port), TEST_INFLUX_URL (http://:TOKEN@host:port/ORG), TEST_NEO4J_URL (bolt://user:pw@host:port), TEST_ETCD_URL (http://host:port),
+                          # TEST_CASSANDRA_URL (cql://[user:pw@]host:port), TEST_INFLUX_URL (http://:TOKEN@host:port/ORG), TEST_NEO4J_URL (bolt://user:pw@host:port), TEST_ETCD_URL (http://host:port), TEST_RABBITMQ_URL (http://user:pw@host:15672),
                           # TEST_MARIADB_URL / TEST_MYSQL_URL (mysql://user:pw@host:port), TEST_MONGO_URL,
                           # TEST_CLICKHOUSE_URL (http://user:pw@host:8123), TEST_VALKEY_URL (redis://:pw@host:port),
                           # TEST_COCKROACH_URL (postgresql://root@host:26257/defaultdb), TEST_OPENSEARCH_URL, TEST_MSSQL_URL

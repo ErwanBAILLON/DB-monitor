@@ -377,3 +377,17 @@ describe("etcd parsers", () => {
     expect(quotaOf({ type: "etcd", host: "h", port: 1, tls: false, database: "" })).toBe(DEFAULT_QUOTA_BYTES);
   });
 });
+
+describe("rabbitmq parsers", () => {
+  it("builds the probe from /api/overview and /api/nodes", async () => {
+    const { fromOverview } = await import("@/lib/drivers/rabbitmq");
+    const p = fromOverview(
+      { rabbitmq_version: "3.13.7", erlang_version: "26.2.5.16", object_totals: { connections: 2, channels: 3, queues: 4, consumers: 1, exchanges: 7 }, queue_totals: { messages: 10 } },
+      [{ name: "rabbit@a", uptime: 62_575, mem_used: 100, mem_limit: 1000, mem_alarm: false, disk_free: 5, disk_free_limit: 1, disk_free_alarm: false, sockets_total: 966, running: true }],
+    );
+    expect(p).toEqual({ version: "3.13.7 · erlang 26.2.5.16", uptimeSec: 63, connUsed: 2, connMax: 966, sizeBytes: 100n, memMax: 1000n, role: "1 nœud · 4 files · 1 consommateur" });
+    const alarms = fromOverview({ rabbitmq_version: "3.13.7", object_totals: {} }, [{ name: "rabbit@a", mem_alarm: true, disk_free_alarm: true, running: true }, { name: "rabbit@b", running: false }]);
+    expect(alarms.role).toBe("2 nœuds · 0 file · 0 consommateur · alarme mémoire rabbit@a, disque rabbit@a, rabbit@b arrêté");
+    expect(alarms.memMax).toBeUndefined();
+  });
+});

@@ -273,3 +273,21 @@ no client-certificate option on purpose. To add it read-only one day:
    the scan to `count_only` for that instance.
 
 Until then the probe and tabs are validated on a standalone etcd only.
+
+## RabbitMQ (`rabbitmq`, management HTTP API, default port 15672, category broker)
+
+| Need | User tag |
+|---|---|
+| Everything the driver reads (`/api/overview`, `/api/nodes`, `/api/queues`, `/api/connections`, `/api/channels`, `/api/vhosts`, `/api/exchanges`) | `monitoring` (sees all vhosts, read-only) ; `management` only shows the vhosts the user has permissions on |
+
+```
+rabbitmqctl add_user dbmon '<password>'
+rabbitmqctl set_user_tags dbmon monitoring
+```
+
+The driver only issues GETs: no purge, delete, publish or policy change exists
+in the code (the integration test seeds its queue through the API directly).
+The fleet card shows memory used vs the node's `mem_limit`
+(`vm_memory_high_watermark`), so the "memory > 85 %" alert applies to brokers
+too; `connMax` is the node's `sockets_total`. The "database" field may hold a
+URL prefix (reverse proxy). Queues are the first 200 sorted by `messages`.

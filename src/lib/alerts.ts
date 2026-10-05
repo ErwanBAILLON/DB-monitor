@@ -35,7 +35,7 @@ export function evaluate(probe: Probe, consecutiveDown: number, t: Thresholds): 
   }
   if (probe.sizeBytes !== undefined && probe.memMax && probe.memMax > 0n) {
     const pct = Number((probe.sizeBytes * 10000n) / probe.memMax) / 100;
-    if (pct > t.memoryPct) out.push({ kind: "memory", message: `Mémoire ${pct.toFixed(0)} % de maxmemory (> ${t.memoryPct} %)` });
+    if (pct > t.memoryPct) out.push({ kind: "memory", message: `Mémoire ${pct.toFixed(0)} % de la limite (maxmemory / vm_memory_high_watermark / quota) (> ${t.memoryPct} %)` });
   }
   return out;
 }

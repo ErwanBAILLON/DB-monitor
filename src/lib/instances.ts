@@ -14,6 +14,7 @@ import * as cassandra from "@/lib/drivers/cassandra";
 import * as influxdb from "@/lib/drivers/influxdb";
 import * as neo4j from "@/lib/drivers/neo4j";
 import * as etcd from "@/lib/drivers/etcd";
+import * as rabbitmq from "@/lib/drivers/rabbitmq";
 import { DEFAULT_PORT, ENGINES, type Conn, type EngineType, type Probe } from "@/lib/drivers/types";
 import { assertAllowedTarget } from "@/lib/targets";
 
@@ -62,6 +63,8 @@ export function probe(c: Conn): Promise<Probe> {
       return neo4j.probe(c);
     case "etcd":
       return etcd.probe(c);
+    case "rabbitmq":
+      return rabbitmq.probe(c);
   }
 }
 
