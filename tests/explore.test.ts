@@ -116,3 +116,10 @@ describe("SQL composition", () => {
     expect(a).toEqual({ page: 2, pageSize: 50, sort: "name desc", filters: ["email = ?"] });
   });
 });
+
+describe("explore API surface", () => {
+  it("exposes the six operations", async () => {
+    const { EXPLORE_OPS } = await import("@/lib/explore/ops");
+    expect([...EXPLORE_OPS]).toEqual(["containers", "objects", "describe", "browse", "profile", "stats"]);
+  });
+});
