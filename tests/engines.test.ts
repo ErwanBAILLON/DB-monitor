@@ -442,6 +442,17 @@ describe("oracle parsers and guard", () => {
     ko("SELECT utl_inaddr.get_host_address FROM dual", /UTL_INADDR/);
     ko("SELECT httpuritype('http://x').getclob() FROM dual", /HTTPURITYPE/);
     ko("SELECT * FROM t WHERE x = q'[a]'", /q'/);
+    // nq'...' (national) literals use the same unparsed delimiters: a nq'[']' pair misaligns the
+    // string stripper and would hide UTL_INADDR / DBMS_RANDOM inside a fake string.
+    ko("SELECT nq'[']' || utl_inaddr.get_host_address('x') || nq'[']' FROM dual", /q'/);
+    ko("SELECT nQ'[']' || dbms_random.value || nq'[']' FROM dual", /q'/);
+    ko("SELECT * FROM t WHERE x = NQ'{a}'", /q'/);
+    ko("SELECT * FROM t WHERE x=q'[a]'", /q'/);
+    ok("SELECT * FROM t WHERE x = 'nq'' and y = ''q'''");
+    ok("SELECT seq.nextval_nq, nq FROM t");
+    ko("SELECT * FROM t WHERE EXECUTE IMMEDIATE 'DROP TABLE t'", /EXECUTE/);
+    ko("SELECT owa_util.get_cgi_env('x') FROM dual", /OWA_UTIL/);
+    ko("SELECT htp.p('x') FROM dual", /HTP/);
     ko("UPDATE t SET a = 1", /SELECT/);
     ko("SELECT * FROM t FOR UPDATE", /Verrous|UPDATE/);
     ko("SELECT * FROM t; DROP TABLE t", /Une seule/);

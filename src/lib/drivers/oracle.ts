@@ -117,7 +117,7 @@ export async function killSession(c: Conn, sid: number, serial: number): Promise
 
 // --- read-only console ----------------------------------------------------------
 
-const ORACLE_FORBIDDEN = /\b(dbms_\w+|utl_\w+|execute\s+immediate|httpuritype|dbms_xmlgen|sys\.kupp\w*|ctx_\w+|wwv_\w+|ords_\w+|apex_\w+|xmltype\s*\(\s*httpuritype|sqlplus|ora_hash_\w+|dbms_scheduler)\b/i;
+const ORACLE_FORBIDDEN = /\b(dbms_\w+|utl_\w+|owa_\w+|htp\.\w+|htf\.\w+|execute\s+immediate|httpuritype|dbms_xmlgen|sys\.kupp\w*|ctx_\w+|wwv_\w+|ords_\w+|apex_\w+|xmltype\s*\(\s*httpuritype|sqlplus|ora_hash_\w+|dbms_scheduler)\b/i;
 
 export type OracleGuard = { ok: true; sql: string } | { ok: false; reason: string };
 
@@ -133,7 +133,9 @@ export function guardOracle(input: string): OracleGuard {
   const stripped = raw.replace(/'(?:[^']|'')*'|--[^\n]*|\/\*[\s\S]*?\*\//g, " ");
   const hit = stripped.match(ORACLE_FORBIDDEN);
   if (hit) return { ok: false, reason: `Paquet ou construction interdit : ${hit[1].toUpperCase()}.` };
-  if (/(^|[^A-Za-z0-9_'])q'/i.test(raw)) return { ok: false, reason: "Littéraux q'...' interdits." };
+  // q'...' and the national nq'...' variant: the generic stripper cannot parse their delimiters,
+  // so a q'[']' literal would misalign the quote stripping and hide a forbidden call.
+  if (/(^|[^A-Za-z0-9_'])n?q'/i.test(raw)) return { ok: false, reason: "Littéraux q'...' / nq'...' interdits." };
   return { ok: true, sql: g.sql };
 }
 
