@@ -191,3 +191,62 @@ describe("mssql and sqlite helpers", () => {
     expect(() => resolvePath("/x.db", [])).toThrow(/DBMON_SQLITE_ROOTS/);
   });
 });
+
+describe("cassandra parsers and CQL guard", () => {
+  it("builds the probe from system.local / peers (uptime from gossip_generation)", async () => {
+    const { fromLocal, parseUptime } = await import("@/lib/drivers/cassandra");
+    const now = 1_800_000_000_000;
+    const p = fromLocal({ release_version: "3.0.8", data_center: "datacenter1", rack: "rack1", gossip_generation: 1_799_999_940 }, [], 2, { scyllaVersion: "6.1.5-0.20250119.c84780618297", runtimeUptime: "1 day, 2 hours, 3 minutes, 4 seconds" }, now);
+    expect(p).toEqual({ version: "scylla 6.1.5-0.20250119.c84780618297", uptimeSec: 93784, connUsed: 2, role: "datacenter1/rack1 · 1 nœud" });
+    expect(fromLocal({ release_version: "3.0.8", data_center: "d", rack: "r", gossip_generation: 1_799_999_940 }, [], 2, {}, now).uptimeSec).toBe(60);
+    expect(parseUptime("43 seconds")).toBe(43);
+    expect(parseUptime(undefined)).toBeUndefined();
+    const c = fromLocal({ release_version: "4.1.5", data_center: "dc1", rack: "r1" }, [{ data_center: "dc1" }, { data_center: "dc2" }], undefined, {}, now);
+    expect(c).toEqual({ version: "cassandra 4.1.5", uptimeSec: undefined, connUsed: undefined, role: "dc1/r1 · 3 nœuds · 2 DC" });
+  });
+  it("converts CQL driver values", async () => {
+    const { cqlValue } = await import("@/lib/drivers/cassandra");
+    const { types } = await import("cassandra-driver");
+    expect(cqlValue(types.Long.fromNumber(42))).toBe("42");
+    expect(cqlValue(types.Uuid.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"))).toBe("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
+    expect(cqlValue(new Map([["a", 1]]))).toBe('{"a":1}');
+    expect(cqlValue(Buffer.from("ab"))).toBe("0x6162");
+    expect(cqlValue(null)).toBeNull();
+  });
+  it("CQL guard: SELECT only, LIMIT forced <= 200, no DML/DDL/BATCH, no system_auth", async () => {
+    const { guardCql, CONSOLE_LIMIT } = await import("@/lib/drivers/cassandra");
+    expect(CONSOLE_LIMIT).toBe(200);
+    const ok = (s: string) => {
+      const r = guardCql(s);
+      expect(r.ok, s).toBe(true);
+      return r.ok ? r.cql : "";
+    };
+    const ko = (s: string, re: RegExp) => {
+      const r = guardCql(s);
+      expect(r.ok, s).toBe(false);
+      if (!r.ok) expect(r.reason).toMatch(re);
+    };
+    expect(ok("SELECT * FROM system.local")).toBe("SELECT * FROM system.local LIMIT 200");
+    expect(ok("select * from system.local;")).toBe("select * from system.local LIMIT 200");
+    expect(ok("SELECT * FROM t LIMIT 10")).toBe("SELECT * FROM t LIMIT 10");
+    expect(ok("SELECT * FROM t LIMIT 5000")).toBe("SELECT * FROM t LIMIT 200");
+    expect(ok("SELECT * FROM t WHERE a = 1 ALLOW FILTERING")).toBe("SELECT * FROM t WHERE a = 1 LIMIT 200 ALLOW FILTERING");
+    expect(ok("SELECT * FROM t LIMIT 999 ALLOW FILTERING")).toBe("SELECT * FROM t LIMIT 200 ALLOW FILTERING");
+    expect(ok("SELECT * FROM t WHERE name = 'DROP TABLE x'")).toContain("LIMIT 200");
+    ko("", /vide/);
+    ko("INSERT INTO t (a) VALUES (1)", /SELECT/);
+    ko("UPDATE t SET a = 1 WHERE b = 2", /SELECT/);
+    ko("DELETE FROM t WHERE a = 1", /SELECT/);
+    ko("TRUNCATE t", /SELECT/);
+    ko("DROP TABLE t", /SELECT/);
+    ko("ALTER TABLE t ADD c int", /SELECT/);
+    ko("CREATE TABLE t (a int PRIMARY KEY)", /SELECT/);
+    ko("BEGIN BATCH INSERT INTO t (a) VALUES (1); APPLY BATCH", /SELECT|instruction/);
+    ko("GRANT SELECT ON ALL KEYSPACES TO x", /SELECT/);
+    ko("SELECT * FROM t; DROP TABLE t", /Une seule/);
+    ko("SELECT * FROM t WHERE a = 'x", /Littéral/);
+    ko("SELECT * FROM system_auth.roles", /system_auth/);
+    ko("SELECT * FROM t LIMIT :n", /LIMIT/);
+    ko('SELECT "DROP"(1) FROM t', /guillemets/);
+  });
+});

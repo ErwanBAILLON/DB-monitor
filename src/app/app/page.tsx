@@ -5,7 +5,7 @@ import { Sparkline } from "@/components/sparkline";
 import { Engine, StatusDot } from "@/components/status";
 import { ago, bytes, duration, pct } from "@/lib/format";
 import { CHECK_INTERVAL_MS } from "@/lib/checker";
-import { SIZE_LABEL, type EngineType } from "@/lib/drivers/types";
+import { CATEGORY_LABEL, CATEGORY_ORDER, ENGINE_CATEGORY, SIZE_LABEL, type EngineCategory, type EngineType } from "@/lib/drivers/types";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Flotte" };
@@ -14,6 +14,8 @@ export default async function FleetPage() {
   const rows = await fleet();
   const up = rows.filter((r) => r.last?.up).length;
   const down = rows.filter((r) => r.last && !r.last.up).length;
+  // Grouped by category (databases, caches, brokers, object stores); empty groups are hidden.
+  const groups = CATEGORY_ORDER.map((cat) => ({ cat, rows: rows.filter((r) => (ENGINE_CATEGORY[r.instance.type as EngineType] ?? "database") === cat) })).filter((g) => g.rows.length > 0);
   return (
     <>
       <div className="mb-5 flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -33,8 +35,15 @@ export default async function FleetPage() {
           </Link>
         </div>
       )}
+      {groups.map(({ cat, rows: groupRows }) => (
+        <section key={cat} className="mb-6" data-testid={`fleet-group-${cat}`}>
+          {groups.length > 1 && (
+            <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-gris">
+              {CATEGORY_LABEL[cat as EngineCategory]} <span className="font-mono normal-case">· {groupRows.length}</span>
+            </h2>
+          )}
       <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3" data-testid="fleet">
-        {rows.map(({ instance: i, last, spark, upRatio24h, alerts }) => {
+        {groupRows.map(({ instance: i, last, spark, upRatio24h, alerts }) => {
           const stale = last ? Date.now() - new Date(last.at).getTime() > 3 * CHECK_INTERVAL_MS : false;
           const conn = pct(last?.connUsed, last?.connMax);
           const mem = last?.memMax && last.memMax > 0n && last.sizeBytes !== null && last.sizeBytes !== undefined ? Number((last.sizeBytes * 100n) / last.memMax) : null;
@@ -89,6 +98,8 @@ export default async function FleetPage() {
           );
         })}
       </ul>
+        </section>
+      ))}
     </>
   );
 }

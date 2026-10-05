@@ -14,6 +14,7 @@ const HOST_HINT: Record<EngineType, string> = {
   opensearch: "opensearch.projects.svc.cluster.local (port HTTP)",
   mssql: "mssql.projects.svc.cluster.local",
   sqlite: "localhost (fichier local au pod)",
+  cassandra: "scylla.projects.svc.cluster.local (port CQL)",
 };
 const USER_HINT: Record<EngineType, string> = {
   postgres: "dbmon",
@@ -25,6 +26,7 @@ const USER_HINT: Record<EngineType, string> = {
   opensearch: "admin (vide si sécurité désactivée)",
   mssql: "sa ou un login VIEW SERVER STATE",
   sqlite: "(aucun)",
+  cassandra: "cassandra (vide sans authentification)",
 };
 
 export function InstanceForm({ instance, action, submitLabel }: { instance?: Instance; action: (fd: FormData) => Promise<void>; submitLabel: string }) {

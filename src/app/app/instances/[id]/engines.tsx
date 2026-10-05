@@ -9,6 +9,7 @@ import { ClickhouseTabs, clickhouseTabList } from "./clickhouse";
 import { OpensearchTabs, opensearchTabList } from "./opensearch";
 import { MssqlTabs, mssqlTabList } from "./mssql";
 import { SqliteTabs, sqliteTabList } from "./sqlite";
+import { CassandraTabs, cassandraTabList } from "./cassandra";
 
 export type TabDef = { key: string; label: string };
 export type EngineTabs = { tabs: TabDef[]; render: (p: { inst: Instance; conn: Conn; tab: string }) => Promise<React.ReactNode> };
@@ -24,4 +25,5 @@ export const ENGINE_TABS: Record<EngineType, EngineTabs> = {
   opensearch: { tabs: opensearchTabList, render: OpensearchTabs },
   mssql: { tabs: mssqlTabList, render: MssqlTabs },
   sqlite: { tabs: sqliteTabList, render: SqliteTabs },
+  cassandra: { tabs: cassandraTabList, render: CassandraTabs },
 };

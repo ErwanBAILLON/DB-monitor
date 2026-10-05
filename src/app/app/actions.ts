@@ -18,6 +18,7 @@ import * as crdb from "@/lib/drivers/cockroach";
 import * as opensearch from "@/lib/drivers/opensearch";
 import * as mssql from "@/lib/drivers/mssql";
 import * as sqlite from "@/lib/drivers/sqlite";
+import * as cassandra from "@/lib/drivers/cassandra";
 import type { QueryResult } from "@/lib/drivers/types";
 import type { Prisma } from "@prisma/client";
 
@@ -183,6 +184,7 @@ export async function runReadOnlyQuery(id: string, fd: FormData): Promise<{ ok: 
       mssql: mssql.readOnlyQuery,
       sqlite: (c, q) => sqlite.readOnlyQuery(c, q),
       opensearch: (c, q, db) => opensearch.search(c, db ?? "", q),
+      cassandra: cassandra.readOnlyQuery,
     };
     const run = RUNNERS[inst.type];
     if (!run) throw new Error("Pas de console de requête sur ce moteur.");

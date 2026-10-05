@@ -26,6 +26,7 @@ real instances over the network.
 | OpenSearch / Elasticsearch | distribution + version, JVM uptime, open HTTP connections, store bytes, health colour + nodes | health + pending tasks, indices, nodes (heap, disk, cpu, thread pools), tasks | none (no delete by design) | `_search` body on one index, size <= 100, timeout 5 s, scripts refused | opensearchproject/opensearch:2.17.0 (security plugin disabled) |
 | SQL Server | year + build, uptime, connections/user connections, master_files bytes, HADR flag | databases (data/log sizes), sessions + requests, blocking + wait stats, configuration + logins | KILL, create database (+ db_owner login) | guard only (no READ ONLY transaction in T-SQL), READ COMMITTED, LOCK_TIMEOUT 5 s, request timeout 5 s | mcr.microsoft.com/mssql/server:2022-latest |
 | SQLite (mounted file) | file size, pages, journal_mode, quick_check | file + pragmas, tables (row counts), indexes | integrity_check | guard + file opened `SQLITE_OPEN_READONLY` | sample file written at pod start (node-sqlite3-wasm) |
+| Cassandra / ScyllaDB | scylla or cassandra version, uptime (runtime_info, else gossip_generation), clients (system.clients / system_views.clients), DC/rack + node count, estimated data size (size_estimates) | node (system.local, runtime_info, peers), keyspaces, tables (+ size estimates), clients, compaction/streams (when exposed), CQL console | none | CQL guard (SELECT only, LIMIT forced <= 200, system_auth excluded) + `LOCAL_ONE` + readTimeout 5 s | scylladb/scylla:6.1 (6.1.5, single node, no auth) |
 
 Every row above was exercised against a live server by
 `tests/integration/<engine>.test.ts` (probe, detail, at least one action, the
@@ -149,6 +150,7 @@ pnpm exec prisma migrate dev
 pnpm test                 # unit: crypto, SQL guard, thresholds, parsers (tests/unit.test.ts, tests/engines.test.ts)
 pnpm test:integration     # postgres: TEST_PG_URL or the local 5490 server; sqlite: always (temp file);
                           # other engines run only when their URL is set and are skipped otherwise:
+                          # TEST_CASSANDRA_URL (cql://[user:pw@]host:port),
                           # TEST_MARIADB_URL / TEST_MYSQL_URL (mysql://user:pw@host:port), TEST_MONGO_URL,
                           # TEST_CLICKHOUSE_URL (http://user:pw@host:8123), TEST_VALKEY_URL (redis://:pw@host:port),
                           # TEST_COCKROACH_URL (postgresql://root@host:26257/defaultdb), TEST_OPENSEARCH_URL, TEST_MSSQL_URL

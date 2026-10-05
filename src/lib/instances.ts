@@ -10,6 +10,7 @@ import * as crdb from "@/lib/drivers/cockroach";
 import * as opensearch from "@/lib/drivers/opensearch";
 import * as mssql from "@/lib/drivers/mssql";
 import * as sqlite from "@/lib/drivers/sqlite";
+import * as cassandra from "@/lib/drivers/cassandra";
 import { DEFAULT_PORT, ENGINES, type Conn, type EngineType, type Probe } from "@/lib/drivers/types";
 import { assertAllowedTarget } from "@/lib/targets";
 
@@ -50,6 +51,8 @@ export function probe(c: Conn): Promise<Probe> {
       return mssql.probe(c);
     case "sqlite":
       return sqlite.probe(c);
+    case "cassandra":
+      return cassandra.probe(c);
   }
 }
 

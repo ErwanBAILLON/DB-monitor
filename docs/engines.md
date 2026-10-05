@@ -138,3 +138,34 @@ the volume is mounted `readOnly: true`. The chart's `sqlite.sample: true`
 creates `/data/sqlite/sample.db` in an emptyDir at pod start
 (`scripts/sqlite-sample.cjs`) so the engine has a live testbed; it disappears
 with the pod.
+
+## Cassandra / ScyllaDB (`cassandra`, CQL native protocol, default port 9042)
+
+| Need | Permission |
+|---|---|
+| Probe (`system.local`, `system.peers`, `system.size_estimates`, Scylla `system.versions` / `system.runtime_info`) | any authenticated role (system keyspaces are readable by every role) |
+| Clients tab | `system.clients` (Scylla) or `system_views.clients` (Cassandra 4+); absent on Cassandra 3 (tab says so) |
+| Compaction / streams tab | `system_views.sstable_tasks`, `system_views.streaming` (Cassandra 4+), else `system.compaction_history` |
+| Read-only console | `SELECT` on the keyspace; the role must not be a superuser for the console to be harmless |
+
+Without `authenticator: PasswordAuthenticator` leave user/password empty.
+Version: Scylla answers `release_version = 3.0.8` (Cassandra compatibility) in
+`system.local`, the real version comes from `system.versions`; the probe shows
+`scylla 6.1.5-…` or `cassandra 4.1.x`. Uptime: exact on Scylla
+(`runtime_info` generic/uptime), approximated on Cassandra as
+`now - gossip_generation` (the epoch second of the last start). Sizes are the
+node's `system.size_estimates` (refreshed periodically, often 0 for tiny
+tables): an estimate, not `nodetool tablestats`. Connections: no `max`
+exposed through CQL.
+
+Console: single `SELECT`, `INSERT/UPDATE/DELETE/TRUNCATE/DROP/ALTER/CREATE/
+BATCH/GRANT/REVOKE/USE/LIST/DESCRIBE` refused anywhere, quoted-identifier
+function calls refused, `LIMIT` forced to <= 200 (appended when missing, kept
+before `ALLOW FILTERING`), `system_auth` (salted hashes) excluded, consistency
+`LOCAL_ONE`, driver `readTimeout` 5 s, `prepare: false`. There is no
+server-side read-only mode in CQL: the barrier is the guard plus the role's
+grants. No action (no `nodetool`, no `TRUNCATE`) is offered.
+
+The driver opens a short-lived `cassandra-driver` client per call (control
+connection + one connection) with `RoundRobinPolicy` so no `localDataCenter`
+is needed. TLS: `sslOptions` without CA verification, like the other engines.
