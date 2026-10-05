@@ -7,7 +7,12 @@ if (!file) {
   console.error("usage: sqlite-sample.cjs <file>");
   process.exit(2);
 }
-const { Database } = require("node-sqlite3-wasm");
+let Database;
+try {
+  ({ Database } = require("node-sqlite3-wasm"));
+} catch {
+  ({ Database } = require(path.join(__dirname, "..", "node_modules", "node-sqlite3-wasm", "dist", "node-sqlite3-wasm.js")));
+}
 fs.mkdirSync(path.dirname(file), { recursive: true });
 const db = new Database(file);
 db.exec(`CREATE TABLE IF NOT EXISTS visits (id INTEGER PRIMARY KEY, at TEXT NOT NULL, path TEXT NOT NULL, status INTEGER NOT NULL);

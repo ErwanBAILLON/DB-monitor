@@ -31,8 +31,12 @@ ENV NODE_ENV=production
 ARG DATABASE_URL="postgresql://build:build@localhost:5432/build"
 ARG AUTH_SECRET="build-placeholder-secret-not-used-at-runtime"
 
+# node-sqlite3-wasm loads its .wasm at runtime: the tracer only sees the .js, so
+# the whole package (dereferenced from the pnpm store) is placed in the standalone tree.
 RUN pnpm exec prisma generate && \
-    pnpm build
+    pnpm build && \
+    rm -rf .next/standalone/node_modules/node-sqlite3-wasm && \
+    cp -rL node_modules/node-sqlite3-wasm .next/standalone/node_modules/node-sqlite3-wasm
 
 # ===================================
 # Stage 3: Production
