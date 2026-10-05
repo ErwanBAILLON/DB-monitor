@@ -47,6 +47,18 @@ describe.skipIf(!url)("mssql driver (integration)", () => {
     expect(who.rowCount).toBeGreaterThan(0);
     await expect(ms.readOnlyQuery(conn, `CREATE TABLE t (a int)`, DB)).rejects.toThrow(/SELECT/);
     await expect(ms.readOnlyQuery(conn, "EXEC xp_cmdshell 'ls'")).rejects.toThrow(/EXEC|interdit/);
+    // T-SQL batches need no ';': a second statement after the SELECT is refused before the server.
+    const smuggled = `dbmon_smuggled_${Date.now().toString(36)}`;
+    await expect(ms.readOnlyQuery(conn, `SELECT 1 EXEC sp_executesql N'CREATE DATABASE ${smuggled}'`)).rejects.toThrow(/EXEC/);
+    await expect(ms.readOnlyQuery(conn, `SELECT 1 EXEC('CREATE DATABASE ${smuggled}')`)).rejects.toThrow(/EXEC/);
+    await expect(ms.readOnlyQuery(conn, "SELECT 1\nEXEC sp_configure 'show advanced options', 1\nRECONFIGURE WITH OVERRIDE")).rejects.toThrow(/EXEC|RECONFIGURE/);
+    await expect(ms.readOnlyQuery(conn, "EXEC sp_configure 'max server memory (MB)', 256")).rejects.toThrow(/lecture/);
+    await expect(ms.readOnlyQuery(conn, "SELECT 1 WAITFOR DELAY '00:00:05'")).rejects.toThrow(/WAITFOR/);
+    expect((await ms.detail(conn)).databases.some((x) => x.name === smuggled)).toBe(false);
+    // Read-only EXEC forms still work.
+    expect((await ms.readOnlyQuery(conn, "EXEC sp_configure")).rowCount).toBeGreaterThan(5);
+    expect((await ms.readOnlyQuery(conn, "EXEC sp_configure 'clr enabled'")).rowCount).toBe(1);
+    expect((await ms.readOnlyQuery(conn, "EXEC sp_help 'sys.tables'")).columns.length).toBeGreaterThan(0);
     await expect(ms.readOnlyQuery(conn, "SELECT * FROM OPENROWSET(BULK 'x', SINGLE_BLOB) AS t")).rejects.toThrow(/interdit/i);
     // The dedicated login is confined to its database (model has no guest access, unlike master/msdb).
     const asLogin = { ...conn, username: DB, password: "Pw-" + DB + "aA1!" };

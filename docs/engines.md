@@ -61,7 +61,7 @@ flavour is read from `INFO server` (`valkey_version`, `dragonfly_version`,
 | Collections tab (`$collStats`, indexes) | `readAnyDatabase` (or `read` on the inspected database) |
 | killOp | `hostManager` (or `root`) |
 | Create database + user (`createUser` readWrite on that db) | `userAdminAnyDatabase` + `readWriteAnyDatabase` (or `root`) |
-| Read-only console | `read` on the database; executed with `readPreference: secondaryPreferred`, `maxTimeMS: 5000`, `limit <= 200`; `$where`, `$function`, `$accumulator`, `$out`, `$merge` and system collections are refused before reaching the server |
+| Read-only console | `read` on the database; executed with `readPreference: secondaryPreferred`, `maxTimeMS: 5000`, `limit <= 200`; `$where`, `$function`, `$accumulator`, `$out`, `$merge` and system collections are refused before reaching the server, including `system.*` targets of `$unionWith` / `$lookup` / `$graphLookup` (`admin.system.users` holds the SCRAM credentials) |
 
 The "database" field of the instance is the `authSource` (usually `admin`).
 Dropping anything is out of scope.
@@ -98,12 +98,16 @@ No delete, no settings change. Hot threads are not rendered (plain-text endpoint
 | Logins tab | `VIEW ANY DEFINITION` |
 | KILL session | `ALTER ANY CONNECTION` (sessions > 50 only) |
 | Create database (+ login db_owner) | `CREATE ANY DATABASE`, `ALTER ANY LOGIN` |
-| Read-only console | `SELECT` on the target; `EXEC` limited to `sp_help*`, `sp_who`, `sp_spaceused`, `sp_columns`, `sp_tables`, `sp_databases`, `sp_configure`, `sp_lock`, `sp_monitor`; `OPENROWSET`/`xp_*`/`BULK` refused |
+| Read-only console | `SELECT` on the target; `EXEC` accepted only as the whole request on `sp_help*`, `sp_who[2]`, `sp_spaceused`, `sp_columns`, `sp_tables`, `sp_databases`, `sp_configure` (read form, no value), `sp_lock`, `sp_monitor`, `sp_readerrorlog`, with literal/numeric/`@param =` arguments only |
 
 **Limitation, stated plainly:** SQL Server has no `READ ONLY` transaction mode.
-The console relies on the syntactic guard plus the rights of the registered
-login. With `sa` the guard is the only barrier. For a safe console, register
-the instance with a dedicated login:
+The console relies on the syntactic guard (`guardTsql` in `drivers/mssql.ts`)
+plus the rights of the registered login. Because T-SQL needs no `;` between
+statements, the guard refuses any statement starter anywhere in the text
+(`EXEC`, `KILL`, `SHUTDOWN`, `RECONFIGURE`, `WAITFOR`, `DBCC`, `BACKUP`/`RESTORE`,
+`USE`, `DECLARE`, `SET`, `BEGIN`/`COMMIT`, `OPENROWSET`, `BULK`, `xp_*`, `sp_*`...),
+not only the DML/DDL keywords. With `sa` the guard is the only barrier. For a
+safe console, register the instance with a dedicated login:
 
 ```sql
 CREATE LOGIN dbmon WITH PASSWORD = '...';

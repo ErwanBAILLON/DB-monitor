@@ -152,8 +152,21 @@ export async function createDatabase(c: Conn, database: string, user: string | u
 // secondaryPreferred and maxTimeMS; operator names that run code are refused.
 
 export type MongoQuerySpec = { collection: string; filter?: Document; projection?: Document; sort?: Document; limit?: number; pipeline?: Document[] };
-const FORBIDDEN_OPS = new Set(["$where", "$function", "$accumulator", "$out", "$merge", "$currentOp", "$listLocalSessions", "$listSessions", "$planCacheStats", "$collStats", "$indexStats", "$shardedDataDistribution", "$changeStream", "$queryStats"]);
+const FORBIDDEN_OPS = new Set(["$where", "$function", "$accumulator", "$out", "$merge", "$currentOp", "$listLocalSessions", "$listSessions", "$planCacheStats", "$collStats", "$indexStats", "$shardedDataDistribution", "$changeStream", "$queryStats", "$listSampledQueries", "$listSearchIndexes", "$listCatalog"]);
+// Stages that read another collection of the same database: the referenced name must
+// pass the same check as the top-level collection (system.users holds the SCRAM credentials).
+const COLLECTION_REFS: Record<string, (v: unknown) => unknown> = {
+  $unionWith: (v) => (typeof v === "string" ? v : (v as Document)?.coll),
+  $lookup: (v) => fromOf((v as Document)?.from),
+  $graphLookup: (v) => fromOf((v as Document)?.from),
+};
+// `from` may be a string or { db, coll } (cross-database forms are refused by the server anyway).
+const fromOf = (v: unknown) => (v && typeof v === "object" ? ((v as Document).coll ?? "") : v);
 const MAX_LIMIT = 200;
+
+export function isAllowedCollection(name: unknown): name is string {
+  return typeof name === "string" && /^[\w.-]{1,120}$/.test(name) && !/^system\.|\.system\./i.test(name);
+}
 
 export function guardMongoSpec(input: string): { ok: true; spec: MongoQuerySpec } | { ok: false; reason: string } {
   if (input.length > 20_000) return { ok: false, reason: "Requête trop longue." };
@@ -164,7 +177,7 @@ export function guardMongoSpec(input: string): { ok: true; spec: MongoQuerySpec 
     return { ok: false, reason: "JSON invalide." };
   }
   if (!spec || typeof spec !== "object" || Array.isArray(spec)) return { ok: false, reason: "Un objet JSON est attendu." };
-  if (typeof spec.collection !== "string" || !/^[\w.-]{1,120}$/.test(spec.collection) || spec.collection.startsWith("system.")) return { ok: false, reason: "collection : nom requis." };
+  if (!isAllowedCollection(spec.collection)) return { ok: false, reason: "collection : nom requis." };
   if (spec.pipeline !== undefined && !Array.isArray(spec.pipeline)) return { ok: false, reason: "pipeline doit être un tableau." };
   const limit = spec.limit === undefined ? 50 : Number(spec.limit);
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) return { ok: false, reason: `limit : entier entre 1 et ${MAX_LIMIT}.` };
@@ -185,6 +198,12 @@ function findForbidden(v: unknown): string | null {
     for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
       if (FORBIDDEN_OPS.has(k)) return k;
       if (k.startsWith("$") && /^\$(where|function|accumulator|out|merge)$/i.test(k)) return k;
+      const ref = COLLECTION_REFS[k];
+      if (ref) {
+        const target = ref(x);
+        // $lookup without `from` (sub-pipeline with $documents) is fine; a system.* target is not.
+        if (target !== undefined && !isAllowedCollection(target)) return `${k} vers ${String(target)}`;
+      }
       const r = findForbidden(x);
       if (r) return r;
     }

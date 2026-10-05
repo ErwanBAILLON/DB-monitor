@@ -155,14 +155,54 @@ export async function createDatabase(c: Conn, name: string, login: string | unde
   );
 }
 
-// Read-only console. SQL Server has no READ ONLY transaction: the guard is the only
-// write barrier here (plus a db_datareader-only login if the operator registers one,
-// see docs/engines.md). SNAPSHOT/READ COMMITTED isolation + requestTimeout bound it.
+// --- T-SQL read-only guard -----------------------------------------------------
+// SQL Server has no READ ONLY transaction: this guard is the only write barrier
+// (plus a db_datareader-only login if the operator registers one, see docs/engines.md).
+// T-SQL does not need ';' between statements, so the generic guard's "single
+// statement" check is not enough: any statement starter that could follow a
+// SELECT is refused anywhere in the text, and EXEC is only accepted as the whole
+// request on a small allowlist of read-only system procedures.
+const TSQL_FORBIDDEN =
+  /\b(exec|execute|sp_executesql|kill|shutdown|reconfigure|waitfor|dbcc|backup|restore|deny|use|go|declare|set|setuser|open|close|print|raiserror|throw|begin|commit|rollback|save|enable|disable|bulk|openrowset|opendatasource|openquery|writetext|updatetext|readtext|checkpoint|xp_\w+|sp_\w+|fn_\w*trace\w*|openxml)\b/i;
+const TSQL_EXEC_ALLOWED = /^\s*exec(ute)?\s+(sp_help\w*|sp_who2?|sp_spaceused|sp_columns|sp_tables|sp_databases|sp_configure|sp_lock|sp_monitor|sp_readerrorlog)\b([\s\S]*)$/i;
+// Arguments of an allowlisted procedure: string literals (already blanked by the guard
+// to ''), numbers, @name = ..., commas. sp_configure with a second argument writes.
+const TSQL_EXEC_ARG = String.raw`(@\w+\s*=\s*)?(N?''|-?\d+(\.\d+)?|null|default)`;
+const TSQL_EXEC_ARGS = new RegExp(String.raw`^\s*(${TSQL_EXEC_ARG}(\s*,\s*${TSQL_EXEC_ARG})*)?\s*$`, "i");
+
+function stripTsql(sql: string): string {
+  return sql
+    .replace(/--[^\n]*/g, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/N?'(?:[^']|'')*'/g, " '' ")
+    .replace(/\[[^\]]*\]/g, " [] ")
+    .replace(/"(?:[^"]|"")*"/g, ' "" ');
+}
+
+export function guardTsql(text: string): { ok: true; sql: string } | { ok: false; reason: string } {
+  const g = guardReadOnly(text, { allowFirst: ["exec", "execute"] });
+  if (!g.ok) return g;
+  const stripped = stripTsql(g.sql);
+  if (/[\[\]"]/.test(stripped.replace(/\[\]|""/g, "")) ) return { ok: false, reason: "Identifiant entre crochets non terminé." };
+  const exec = stripped.match(TSQL_EXEC_ALLOWED);
+  if (/^\s*exec/i.test(stripped)) {
+    if (!exec) return { ok: false, reason: "EXEC n'est permis que pour sp_help*, sp_who, sp_spaceused, sp_columns, sp_tables, sp_databases, sp_configure (lecture), sp_lock, sp_monitor, sp_readerrorlog." };
+    const args = exec[3];
+    if (!TSQL_EXEC_ARGS.test(args) || TSQL_FORBIDDEN.test(args)) return { ok: false, reason: "Arguments EXEC non autorisés (littéraux, nombres et @param = valeur uniquement)." };
+    if (/^sp_configure$/i.test(exec[2]) && args.includes(",")) return { ok: false, reason: "sp_configure n'est permis qu'en lecture (sans valeur)." };
+    return { ok: true, sql: g.sql };
+  }
+  const hit = stripped.match(TSQL_FORBIDDEN);
+  if (hit) return { ok: false, reason: `Mot-clé T-SQL interdit : ${hit[1].toUpperCase()}.` };
+  // Bracketed identifiers could spell a procedure name: [xp_cmdshell] is still EXEC-only, but
+  // a bracketed name in a SELECT must not be a system procedure/function either.
+  for (const m of g.sql.matchAll(/\[([^\]]*)\]/g)) if (/^(xp_|sp_|fn_)/i.test(m[1].trim())) return { ok: false, reason: `Identifiant interdit : [${m[1]}].` };
+  return { ok: true, sql: g.sql };
+}
+
 export async function readOnlyQuery(c: Conn, text: string, database?: string): Promise<QueryResult> {
-  const g = guardReadOnly(text, { allowFirst: ["exec"] });
+  const g = guardTsql(text);
   if (!g.ok) throw new Error(g.reason);
-  if (/^\s*exec/i.test(g.sql) && !/^\s*exec(ute)?\s+sp_(help|who2?|spaceused|columns|tables|databases|configure|lock|monitor|readerrorlog)\b/i.test(g.sql)) throw new Error("EXEC n'est permis que pour sp_help*, sp_who, sp_spaceused, sp_columns, sp_tables, sp_databases, sp_configure, sp_lock, sp_monitor.");
-  if (/\b(openrowset|opendatasource|openquery|xp_\w+|bulk\s+insert|writetext|updatetext)\b/i.test(g.sql)) throw new Error("Fonction interdite (OPENROWSET / xp_* / BULK).");
   return withMs(
     c,
     async (pool) => {

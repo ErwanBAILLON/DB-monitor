@@ -62,6 +62,18 @@ describe("mongodb parsers and guard", () => {
     ko('{"collection":"u","pipeline":[{"$merge":{"into":"y"}}]}', /\$merge/);
     ko('{"collection":"u","filter":{"a":{"$expr":{"$where":1}}}}', /\$where/);
     ko('{"collection":"system.users"}', /collection/);
+    ko('{"collection":"x.system.users"}', /collection/);
+    // Stages that read another collection must not reach system.* either (credential documents).
+    ko('{"collection":"x","pipeline":[{"$unionWith":"system.users"}]}', /\$unionWith vers system\.users/);
+    ko('{"collection":"x","pipeline":[{"$unionWith":{"coll":"system.users","pipeline":[]}}]}', /\$unionWith/);
+    ko('{"collection":"x","pipeline":[{"$lookup":{"from":"system.users","localField":"a","foreignField":"b","as":"u"}}]}', /\$lookup vers system\.users/);
+    ko('{"collection":"x","pipeline":[{"$lookup":{"from":{"db":"admin","coll":"system.users"},"as":"u","pipeline":[]}}]}', /\$lookup/);
+    ko('{"collection":"x","pipeline":[{"$graphLookup":{"from":"system.version","startWith":"$a","connectFromField":"a","connectToField":"b","as":"g"}}]}', /\$graphLookup/);
+    ko('{"collection":"x","pipeline":[{"$facet":{"f":[{"$unionWith":"system.users"}]}}]}', /\$unionWith/);
+    ko('{"collection":"x","pipeline":[{"$listSampledQueries":{}}]}', /\$listSampledQueries/);
+    // Legitimate joins stay allowed.
+    expect(guardMongoSpec('{"collection":"orders","pipeline":[{"$lookup":{"from":"customers","localField":"c","foreignField":"_id","as":"cust"}},{"$unionWith":"archive"}]}').ok).toBe(true);
+    expect(guardMongoSpec('{"collection":"x","pipeline":[{"$lookup":{"as":"d","pipeline":[{"$documents":[{"a":1}]}]}}]}').ok).toBe(true);
     ko('{"collection":"u","limit":201}', /limit/);
     ko('{"collection":"u","limit":0}', /limit/);
     ko("not json", /JSON/);
@@ -119,6 +131,55 @@ describe("mssql and sqlite helpers", () => {
   it("shortens @@VERSION", async () => {
     const { shortVersion } = await import("@/lib/drivers/mssql");
     expect(shortVersion("Microsoft SQL Server 2022 (RTM-CU15) (KB5041321) - 16.0.4145.4 (X64) \n\tJul 24 2024 Developer Edition (64-bit) on Linux")).toBe("2022 16.0.4145.4");
+  });
+  it("T-SQL guard: refuses mid-batch statements, EXEC smuggling and server-level commands", async () => {
+    const { guardTsql } = await import("@/lib/drivers/mssql");
+    const ok = (s: string) => expect(guardTsql(s).ok, s).toBe(true);
+    const ko = (s: string, re: RegExp) => {
+      const r = guardTsql(s);
+      expect(r.ok, s).toBe(false);
+      if (!r.ok) expect(r.reason).toMatch(re);
+    };
+    ok("SELECT 1 AS one, 'x' AS s");
+    ok("SELECT TOP 10 name FROM sys.tables ORDER BY name OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY");
+    ok("SELECT * FROM [dbo].[Orders] o WHERE o.[status] = 'exec kill' AND o.n > 1");
+    ok("SELECT CASE WHEN a > 1 THEN 'a' ELSE 'b' END FROM t");
+    ok("WITH c AS (SELECT 1 AS n) SELECT * FROM c");
+    ok("EXEC sp_who");
+    ok("EXEC sp_who2 'active'");
+    ok("EXECUTE sp_help 'dbo.Orders'");
+    ok("exec sp_who @loginame = N'sa'");
+    ok("EXEC sp_configure");
+    ok("EXEC sp_configure 'max server memory (MB)'");
+    ok("EXEC sp_spaceused N'dbo.t'");
+    // T-SQL does not need ';' between statements: any second statement is refused.
+    ko("SELECT 1 EXEC sp_executesql N'DROP DATABASE foo'", /EXEC/);
+    ko("SELECT 1 EXEC('DROP TABLE t')", /EXEC/);
+    ko("SELECT 1\nEXEC sp_configure 'show advanced options', 1\nRECONFIGURE WITH OVERRIDE", /EXEC|RECONFIGURE/);
+    ko("SELECT 1 KILL 55", /KILL/);
+    ko("SELECT 1 SHUTDOWN WITH NOWAIT", /SHUTDOWN/);
+    ko("SELECT 1 WAITFOR DELAY '00:00:30'", /WAITFOR/);
+    ko("SELECT 1 DBCC FREEPROCCACHE", /DBCC/);
+    ko("SELECT 1 BACKUP DATABASE x TO DISK = 'y'", /BACKUP/);
+    ko("SELECT 1 USE master", /USE/);
+    ko("SELECT 1 DECLARE @x int", /DECLARE/);
+    ko("SELECT 1 SET IDENTITY_INSERT t ON", /SET/);
+    ko("SELECT 1 BEGIN TRAN", /BEGIN/);
+    ko("SELECT * FROM OPENROWSET(BULK 'x', SINGLE_BLOB) AS t", /OPENROWSET|BULK/);
+    ko("SELECT * FROM sys.fn_trace_gettable('x', 1)", /FN_TRACE/);
+    ko("SELECT 1 FROM [xp_cmdshell]", /xp_cmdshell/);
+    ko("SELECT * FROM t WHERE [a", /non terminé/);
+    // EXEC: allowlisted read procedures only, no nested statement in the arguments.
+    ko("EXEC sp_configure 'max server memory (MB)', 256", /lecture/);
+    ko("EXEC sp_executesql N'DROP DATABASE foo'", /EXEC/);
+    ko("EXEC xp_cmdshell 'ls'", /EXEC/);
+    ko("EXEC sp_addsrvrolemember 'x','sysadmin'", /EXEC/);
+    ko("EXEC sp_OACreate 'WScript.Shell', @o OUT", /EXEC/);
+    ko("EXEC sp_who EXEC sp_executesql N'EXEC x' + 'p_cmdshell ''dir'''", /Arguments/);
+    ko("EXEC sp_help 'x' SELECT 1", /Arguments/);
+    ko("EXEC sp_help ('x')", /Arguments/);
+    ko("EXEC sp_help 'x'; DROP TABLE t", /seule|instruction/i);
+    ko("SELECT 1 INSERT INTO t VALUES (1)", /INSERT/);
   });
   it("confines sqlite paths to the allowed roots", async () => {
     const { resolvePath, roots } = await import("@/lib/drivers/sqlite");

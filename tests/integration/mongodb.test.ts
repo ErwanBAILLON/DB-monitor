@@ -53,6 +53,13 @@ describe.skipIf(!url)("mongodb driver (integration)", () => {
     await expect(mg.readOnlyQuery(conn, JSON.stringify({ collection: "items", filter: { $where: "1" } }), DB)).rejects.toThrow(/\$where/);
     await expect(mg.readOnlyQuery(conn, JSON.stringify({ collection: "items", pipeline: [{ $out: "x" }] }), DB)).rejects.toThrow(/\$out/);
     await expect(mg.readOnlyQuery(conn, JSON.stringify({ collection: "items", limit: 1000 }), DB)).rejects.toThrow(/limit/);
+    // Joins to system.* are refused before reaching the server, even as root on admin.
+    await expect(mg.readOnlyQuery(conn, JSON.stringify({ collection: "x", pipeline: [{ $unionWith: "system.users" }, { $project: { user: 1, credentials: 1 } }] }), "admin")).rejects.toThrow(/\$unionWith vers system\.users/);
+    await expect(mg.readOnlyQuery(conn, JSON.stringify({ collection: "x", pipeline: [{ $lookup: { from: "system.users", pipeline: [], as: "u" } }] }), "admin")).rejects.toThrow(/\$lookup vers system\.users/);
+    // ...while a join between ordinary collections works.
+    await mg.withMongo(conn, async (c) => c.db(DB).collection("tags").insertMany([{ tag: "a", label: "Alpha" }, { tag: "b", label: "Beta" }]));
+    const joined = await mg.readOnlyQuery(conn, JSON.stringify({ collection: "items", pipeline: [{ $match: { n: 1 } }, { $lookup: { from: "tags", localField: "tag", foreignField: "tag", as: "t" } }, { $unionWith: { coll: "tags", pipeline: [{ $match: { tag: "b" } }] } }] }), DB);
+    expect(joined.rowCount).toBe(2);
     // The user cannot read another database.
     await expect(mg.readOnlyQuery(asUser, JSON.stringify({ collection: "system.version" }), "admin")).rejects.toThrow();
   });
