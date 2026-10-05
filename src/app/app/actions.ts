@@ -20,6 +20,7 @@ import * as mssql from "@/lib/drivers/mssql";
 import * as sqlite from "@/lib/drivers/sqlite";
 import * as cassandra from "@/lib/drivers/cassandra";
 import * as influxdb from "@/lib/drivers/influxdb";
+import * as neo4j from "@/lib/drivers/neo4j";
 import type { QueryResult } from "@/lib/drivers/types";
 import type { Prisma } from "@prisma/client";
 
@@ -187,6 +188,7 @@ export async function runReadOnlyQuery(id: string, fd: FormData): Promise<{ ok: 
       opensearch: (c, q, db) => opensearch.search(c, db ?? "", q),
       cassandra: cassandra.readOnlyQuery,
       influxdb: influxdb.readOnlyQuery,
+      neo4j: neo4j.readOnlyQuery,
     };
     const run = RUNNERS[inst.type];
     if (!run) throw new Error("Pas de console de requête sur ce moteur.");
@@ -346,6 +348,21 @@ export async function msCreateDatabase(fd: FormData): Promise<Result> {
     revalidatePath(`/app/instances/${inst.id}`);
     const url = password ? `\nLogin : ${login}\nMot de passe : ${password}\n(Affiché une seule fois, non journalisé.)` : "";
     return { ok: true, message: `Base ${name} créée${login ? ` (login ${login}, db_owner)` : ""}.${url}` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// --- neo4j ---------------------------------------------------------------------
+
+export async function neoTerminate(fd: FormData): Promise<Result> {
+  try {
+    const actor = await requireAdmin();
+    const inst = await instanceOr404(String(fd.get("id")));
+    const transactionId = String(fd.get("transactionId") ?? "").trim();
+    const r = await audited({ actor, instance: inst, action: "neo4j.terminate_transaction", params: { transactionId } }, () => neo4j.terminateTransaction(connOf(inst), transactionId), (r) => r);
+    revalidatePath(`/app/instances/${inst.id}`);
+    return { ok: true, message: `TERMINATE TRANSACTIONS ${transactionId} : ${r}.` };
   } catch (err) {
     return fail(err);
   }

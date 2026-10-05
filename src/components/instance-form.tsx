@@ -16,6 +16,7 @@ const HOST_HINT: Record<EngineType, string> = {
   sqlite: "localhost (fichier local au pod)",
   cassandra: "scylla.projects.svc.cluster.local (port CQL)",
   influxdb: "influxdb.projects.svc.cluster.local (port HTTP)",
+  neo4j: "neo4j.projects.svc.cluster.local (port Bolt)",
 };
 const USER_HINT: Record<EngineType, string> = {
   postgres: "dbmon",
@@ -29,6 +30,7 @@ const USER_HINT: Record<EngineType, string> = {
   sqlite: "(aucun)",
   cassandra: "cassandra (vide sans authentification)",
   influxdb: "(ignoré : le token va dans le mot de passe)",
+  neo4j: "neo4j ou un utilisateur reader + admin pour TERMINATE",
 };
 
 export function InstanceForm({ instance, action, submitLabel }: { instance?: Instance; action: (fd: FormData) => Promise<void>; submitLabel: string }) {

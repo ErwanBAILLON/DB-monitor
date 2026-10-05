@@ -12,6 +12,7 @@ import * as mssql from "@/lib/drivers/mssql";
 import * as sqlite from "@/lib/drivers/sqlite";
 import * as cassandra from "@/lib/drivers/cassandra";
 import * as influxdb from "@/lib/drivers/influxdb";
+import * as neo4j from "@/lib/drivers/neo4j";
 import { DEFAULT_PORT, ENGINES, type Conn, type EngineType, type Probe } from "@/lib/drivers/types";
 import { assertAllowedTarget } from "@/lib/targets";
 
@@ -56,6 +57,8 @@ export function probe(c: Conn): Promise<Probe> {
       return cassandra.probe(c);
     case "influxdb":
       return influxdb.probe(c);
+    case "neo4j":
+      return neo4j.probe(c);
   }
 }
 

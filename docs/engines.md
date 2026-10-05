@@ -199,3 +199,34 @@ anywhere: `to()`, `wideTo()`, `experimental`, `http`, `sql`, `secrets`,
 HTTP request is cut after 5 s (the server cancels on disconnect), results are
 annotated CSV parsed into rows (several tables are concatenated with their
 `table` index). Not covered: `/api/v2/delete`, `/api/v2/write` (never called).
+
+## Neo4j 5 (`neo4j`, Bolt, default port 7687)
+
+| Need | Privilege / role |
+|---|---|
+| Probe (`dbms.components`, `SHOW DATABASES`, `dbms.queryJmx` for JVM uptime, `dbms.listConnections`, `SHOW SETTINGS`) | any user for components/JMX; `SHOW DATABASES` lists what the user may see; `dbms.listConnections` and `SHOW SETTINGS` need `admin` on Community (there is no finer RBAC without Enterprise) |
+| Transactions tab (`SHOW TRANSACTIONS`) | own transactions for any user; all of them with `admin` (Enterprise: `SHOW TRANSACTION` privilege) |
+| Graph, index and constraint tabs (`MATCH ... count`, `db.labels`, `SHOW INDEXES`, `SHOW CONSTRAINTS`) | `reader` role on the database |
+| TERMINATE TRANSACTIONS | own transactions for any user, others with `admin` (Enterprise: `TERMINATE TRANSACTION` privilege) |
+| Cypher console | `reader`; executed in a session with **access mode READ**, which the server enforces (`Neo.ClientError.Statement.AccessMode` on any write, verified in the integration test by bypassing the guard) |
+
+Store sizes: the `neo4j.metrics:name=neo4j.<db>.store.size.total` JMX bean is
+Enterprise-only; on Community the column reads `n/d` and the fleet size cell
+stays empty. The TERMINATE action runs on the `system` database in a WRITE
+session (administration command), which is why the registered user needs
+`admin` to terminate other users' transactions on Community.
+
+Console guard (`guardCypher`): single statement starting with MATCH /
+OPTIONAL MATCH / WITH / UNWIND / RETURN / CALL / PROFILE / EXPLAIN; refused
+anywhere: CREATE, MERGE, DELETE, DETACH, SET, REMOVE, DROP, FOREACH, LOAD
+CSV, ALTER, GRANT/DENY/REVOKE, START/STOP DATABASE, TERMINATE, `CALL { } IN
+TRANSACTIONS`; `CALL` only for `db.labels|relationshipTypes|propertyKeys|
+schema.*|info|ping|stats.retrieve|index.fulltext.query*|index.vector.query*`,
+`dbms.components|listConfig|queryJmx|showCurrentUser|info|listConnections`,
+`tx.getMetaData`; `apoc.*` refused; SHOW/USE refused (tabs cover them); the
+`system` database is never targeted. `LIMIT 200` appended after the final
+RETURN or an existing LIMIT capped; transaction timeout 5 s set at
+`beginTransaction` (server-side, `TransactionTimedOut`). Node and relationship
+values are rendered as `(:Label {props})` / `[:TYPE {props}]`.
+
+TLS: `bolt+ssc` (self-signed accepted) when the TLS flag is set.

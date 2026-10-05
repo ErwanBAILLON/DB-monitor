@@ -306,3 +306,57 @@ describe("influxdb parsers and Flux guard", () => {
     ko('from(bucket: "m") |> range(start: -1h) |> filter(fn: (r) => r.a == "unterminated)', /Littéral/);
   });
 });
+
+describe("neo4j parsers and Cypher guard", () => {
+  it("builds the probe from dbms.components / SHOW DATABASES / JMX", async () => {
+    const { fromComponents, neoValue } = await import("@/lib/drivers/neo4j");
+    const p = fromComponents([{ name: "Neo4j Kernel", versions: ["5.26.0"], edition: "community" }], [{ name: "neo4j", currentStatus: "online", role: "primary" }, { name: "system", currentStatus: "online" }], 61_500, 3, 400);
+    expect(p).toEqual({ version: "5.26.0 community", uptimeSec: 62, connUsed: 3, connMax: 400, role: "1 base" });
+    expect(fromComponents([], [{ name: "a", currentStatus: "offline" }, { name: "b", currentStatus: "online", role: "secondary" }], undefined, undefined, undefined).role).toBe("2 bases · 1 hors ligne · undefined/secondary");
+    expect(neoValue(null)).toBeNull();
+    expect(neoValue([1, "a"])).toEqual([1, "a"]);
+    expect(neoValue({ a: 1 })).toBe('{"a":1}');
+  });
+  it("Cypher guard: read clauses only, writers and admin/apoc procedures refused, LIMIT capped", async () => {
+    const { guardCypher } = await import("@/lib/drivers/neo4j");
+    const ok = (s: string) => {
+      const r = guardCypher(s);
+      expect(r.ok, s).toBe(true);
+      return r.ok ? r.cypher : "";
+    };
+    const ko = (s: string, re: RegExp) => {
+      const r = guardCypher(s);
+      expect(r.ok, s).toBe(false);
+      if (!r.ok) expect(r.reason).toMatch(re);
+    };
+    expect(ok("MATCH (n) RETURN n")).toBe("MATCH (n) RETURN n\nLIMIT 200");
+    expect(ok("MATCH (n) RETURN n LIMIT 10")).toBe("MATCH (n) RETURN n LIMIT 10");
+    expect(ok("MATCH (n) RETURN n LIMIT 5000;")).toBe("MATCH (n) RETURN n LIMIT 5000".replace("5000", "200"));
+    expect(ok("MATCH (n) WITH n LIMIT 5 RETURN n")).toBe("MATCH (n) WITH n LIMIT 5 RETURN n\nLIMIT 200");
+    expect(ok("MATCH (n) RETURN n ORDER BY n.name LIMIT 300 // c")).toBe("MATCH (n) RETURN n ORDER BY n.name LIMIT 200 // c");
+    ok("CALL db.labels() YIELD label RETURN label");
+    ok("CALL db.labels()");
+    ok("CALL dbms.components() YIELD name, versions RETURN *");
+    ok("UNWIND [1,2] AS x RETURN x");
+    ok("MATCH (n {name: 'CREATE'}) RETURN n");
+    ok("MATCH (n:`SET`) RETURN n");
+    ko("", /vide/);
+    ko("CREATE (n:X) RETURN n", /CREATE/);
+    ko("MATCH (n) SET n.a = 1 RETURN n", /SET/);
+    ko("MATCH (n) DETACH DELETE n", /DETACH|DELETE/);
+    ko("MERGE (n:X {a: 1}) RETURN n", /MERGE/);
+    ko("MATCH (n) REMOVE n.a RETURN n", /REMOVE/);
+    ko("LOAD CSV FROM 'file:///x.csv' AS row RETURN row", /LOAD CSV/);
+    ko("CALL dbms.killConnections(['x'])", /Procédure interdite/);
+    ko("CALL dbms.security.listUsers()", /Procédure interdite/);
+    ko("CALL apoc.load.json('http://x') YIELD value RETURN value", /interdite|apoc/);
+    ko("CALL apoc.cypher.runWrite('CREATE ()', {}) YIELD value RETURN value", /interdite|apoc/);
+    ko("MATCH (n) RETURN n; MATCH (m) RETURN m", /Une seule/);
+    ko("MATCH (n) WHERE n.a = 'x RETURN n", /Littéral/);
+    ko("SHOW TRANSACTIONS", /SHOW/);
+    ko("DROP INDEX x", /DROP/);
+    ko("CREATE DATABASE foo", /CREATE/);
+    ko("TERMINATE TRANSACTIONS 'x'", /TERMINATE/);
+    ko("MATCH (n) CALL { WITH n SET n.x = 1 } IN TRANSACTIONS RETURN count(*)", /SET|IN TRANSACTIONS/);
+  });
+});
