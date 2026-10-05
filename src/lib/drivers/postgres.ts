@@ -13,7 +13,10 @@ function clientFor(c: Conn, database?: string): Client {
     database: database ?? c.database ?? "postgres",
     ssl: c.tls ? { rejectUnauthorized: false } : undefined,
     connectionTimeoutMillis: PROBE_TIMEOUT_MS,
-    statement_timeout: QUERY_TIMEOUT_MS,
+    // Client-side timeout: a server-side statement_timeout startup parameter is
+    // rejected by PgBouncer ("unsupported startup parameter"), and the read-only
+    // query path sets it per transaction anyway.
+    query_timeout: QUERY_TIMEOUT_MS,
     application_name: "db-monitor",
   });
 }
