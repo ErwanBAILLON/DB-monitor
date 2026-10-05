@@ -117,6 +117,24 @@ describe("SQL composition", () => {
   });
 });
 
+describe("sqlite explorer composition", () => {
+  it("quotes identifiers with double quotes, binds ? values and refuses injections", async () => {
+    const { composeSqliteBrowse, containerOf } = await import("@/lib/explore/sqlite");
+    const columns = ["id", "path", "status"];
+    const c = composeSqliteBrowse("visits", columns, { page: 2, pageSize: 20, sortColumn: "status", sortDir: "desc", filters: [{ column: "path", op: "like", value: "/a%' OR 1=1 --" }, { column: "status", op: "is null" }] });
+    expect(c.select).toBe('SELECT "id", "path", "status" FROM "visits" WHERE "path" LIKE ? AND "status" IS NULL ORDER BY "status" DESC LIMIT ? OFFSET ?');
+    expect(c.params).toEqual(["/a%' OR 1=1 --", 20, 20]);
+    expect(c.select).not.toContain("1=1");
+    expect(() => composeSqliteBrowse("visits; DROP TABLE visits", columns, { page: 1, pageSize: 10, filters: [] })).toThrow(/invalide/);
+    expect(() => composeSqliteBrowse("visits", columns, { page: 1, pageSize: 10, sortColumn: "id; DROP", filters: [] })).toThrow(/invalide/);
+    expect(() => composeSqliteBrowse("visits", columns, { page: 1, pageSize: 10, filters: [{ column: "1=1", op: "=", value: "1" }] })).toThrow(/invalide/);
+    expect(() => composeSqliteBrowse("visits", columns, { page: 1, pageSize: 10, filters: [{ column: "secret", op: "=", value: "1" }] })).toThrow(/inconnue/);
+    expect(containerOf("main")).toBe("main");
+    expect(() => containerOf("temp")).toThrow(/Conteneur inconnu/);
+    expect(() => containerOf("main; ATTACH")).toThrow(/Conteneur inconnu/);
+  });
+});
+
 describe("explore API surface", () => {
   it("exposes the six operations", async () => {
     const { EXPLORE_OPS } = await import("@/lib/explore/ops");
