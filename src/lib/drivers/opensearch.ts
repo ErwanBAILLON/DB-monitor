@@ -36,15 +36,12 @@ export function fromCluster(root: Json, health: Json, nodesStats: Json): Omit<Pr
   const flavour = version?.distribution === "opensearch" ? "opensearch" : "elasticsearch";
   const nodes = Object.values((nodesStats.nodes as Record<string, Json>) ?? {});
   let uptime: number | undefined;
-  let heapMax = 0n;
   let storeBytes = 0n;
   let httpOpen = 0;
   for (const nd of nodes) {
     const jvm = nd.jvm as Json | undefined;
-    const mem = jvm?.mem as Json | undefined;
     const u = Number(jvm?.uptime_in_millis);
     if (Number.isFinite(u)) uptime = Math.max(uptime ?? 0, Math.round(u / 1000));
-    heapMax += BigInt(Math.round(Number(mem?.heap_max_in_bytes ?? 0)));
     storeBytes += BigInt(Math.round(Number(((nd.indices as Json | undefined)?.store as Json | undefined)?.size_in_bytes ?? 0)));
     httpOpen += Number((nd.http as Json | undefined)?.current_open ?? 0);
   }
@@ -53,7 +50,6 @@ export function fromCluster(root: Json, health: Json, nodesStats: Json): Omit<Pr
     uptimeSec: uptime,
     connUsed: httpOpen,
     sizeBytes: storeBytes,
-    memMax: heapMax > 0n ? heapMax : undefined,
     role: `${health.status ?? "?"} · ${health.number_of_nodes ?? nodes.length} nœud(s)`,
   };
 }

@@ -14,7 +14,6 @@ describe.skipIf(!url)("opensearch driver (integration)", () => {
     expect(p.up, p.error).toBe(true);
     expect(p.version).toMatch(/^opensearch 2\.17/);
     expect(p.uptimeSec).toBeGreaterThanOrEqual(0);
-    expect(p.memMax! > 0n).toBe(true);
     expect(p.role).toMatch(/^(green|yellow) · 1 nœud/);
   });
 

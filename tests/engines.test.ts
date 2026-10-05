@@ -100,7 +100,7 @@ describe("opensearch parsers and guard", () => {
       { status: "yellow", number_of_nodes: 1 },
       { nodes: { a: { jvm: { uptime_in_millis: 61_000, mem: { heap_used_in_bytes: 100, heap_max_in_bytes: 1000 } }, indices: { store: { size_in_bytes: 2048 } }, http: { current_open: 3 } } } },
     );
-    expect(p).toEqual({ version: "opensearch 2.17.0", uptimeSec: 61, connUsed: 3, sizeBytes: 2048n, memMax: 1000n, role: "yellow · 1 nœud(s)" });
+    expect(p).toEqual({ version: "opensearch 2.17.0", uptimeSec: 61, connUsed: 3, sizeBytes: 2048n, role: "yellow · 1 nœud(s)" });
     expect(fromCluster({ version: { number: "8.15.0" } }, { status: "green" }, {}).version).toBe("elasticsearch 8.15.0");
   });
   it("guards the search body", async () => {

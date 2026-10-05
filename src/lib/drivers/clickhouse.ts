@@ -58,7 +58,6 @@ export async function probe(c: Conn): Promise<Probe> {
           connUsed: Number(row.conns),
           connMax: Number(row.max_conns) || undefined,
           sizeBytes: BigInt(String(row.bytes ?? 0)),
-          memMax: Number(row.mem_max) > 0 ? BigInt(String(row.mem_max)) : undefined,
           role: Number(row.ro_replicas) > 0 ? "readonly-replica" : "server",
         } satisfies Probe;
       })(),

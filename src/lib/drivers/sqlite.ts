@@ -51,8 +51,6 @@ export async function probe(c: Conn): Promise<Probe> {
   try {
     return await withDb(c, (db, file) => {
       const latencyMs = Date.now() - t0;
-      const pageCount = Number(one(db, "PRAGMA page_count"));
-      const pageSize = Number(one(db, "PRAGMA page_size"));
       const quick = String(one(db, "PRAGMA quick_check"));
       const st = statSync(file);
       return {
@@ -61,7 +59,6 @@ export async function probe(c: Conn): Promise<Probe> {
         version: `SQLite ${one(db, "SELECT sqlite_version()")}`,
         uptimeSec: Math.round((Date.now() - st.mtimeMs) / 1000),
         sizeBytes: BigInt(st.size),
-        memMax: BigInt(pageCount * pageSize),
         role: String(one(db, "PRAGMA journal_mode")),
         error: quick === "ok" ? undefined : `quick_check: ${quick}`,
       } satisfies Probe;

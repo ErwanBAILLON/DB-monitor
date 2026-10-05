@@ -1,6 +1,6 @@
 // Engine tour: registers (or reuses) instances and walks through every detail tab.
 //   BASE=http://127.0.0.1:3170 ADMIN_PASSWORD=... ENGINES_FILE=/path/engines.json node scripts/e2e-engines.cjs
-//   engines.json: [{ name, type, host, port, username, password, database, query, tls }]
+//   engines.json: [{ name, type, host, port, username, password, database, query, queryDb, tls }]
 // Prod: BASE=https://dbmon.ebaillon.fr RESOLVE_IP=192.168.1.150 (instances must already be allowed by DBMON_ALLOWED_TARGETS).
 // Fails on any "engine-error" panel, page error, or console query error. Screenshots in SHOTS.
 const PW = process.env.PLAYWRIGHT || "playwright";
@@ -79,6 +79,7 @@ const log = (m) => console.log(`[tour] ${m}`);
       const err = page.getByTestId("engine-error");
       if ((await err.count()) > 0) problems.push(`${s.name}/${tab}: ${await err.innerText()}`);
       if (tab === "query" && s.query) {
+        if (s.queryDb) await page.selectOption('select[name="database"]', s.queryDb);
         await page.fill('textarea[name="sql"]', s.query);
         await page.click('form button[type="submit"]:has-text("Exécuter")');
         await Promise.race([page.getByTestId("query-result").waitFor({ timeout: 20_000 }), page.getByTestId("query-error").waitFor({ timeout: 20_000 })]);
