@@ -1,0 +1,119 @@
+# db-monitor - Helm Values
+
+replicaCount: 1
+
+image:
+  repository: git.ebaillon.fr/infra/db-monitor
+  tag: "0.1.0"
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: gitea-registry-credentials
+
+nameOverride: ""
+fullnameOverride: "db-monitor"
+
+serviceAccount:
+  create: true
+  name: "db-monitor"
+
+podAnnotations: {}
+
+podSecurityContext:
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  seccompProfile:
+    type: RuntimeDefault
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 3000
+
+# LAN only: the host's A record points to the node IP and is not in the Cloudflare tunnel.
+ingress:
+  enabled: true
+  host: dbmon.ebaillon.fr
+  tls: true
+  certResolver: letsencrypt
+  # Shared Traefik middlewares (orgs/infra/traefik, cross-namespace).
+  hardening:
+    enabled: true
+
+resources:
+  limits:
+    cpu: 400m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 192Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+env:
+  NODE_ENV: production
+  NEXTAUTH_URL: https://dbmon.ebaillon.fr
+
+# Secrets synchronised from Vault via ExternalSecrets Operator
+# (helm/templates/external-secret.yaml). Nothing sensitive here.
+# Required keys: DATABASE_URL, AUTH_SECRET, DBMON_ENCRYPTION_KEY, ADMIN_USERNAME, ADMIN_PASSWORD.
+# Optional: DBMON_SEED_JSON, SMTP_HOST/PORT/USER/PASSWORD, EMAIL_FROM, ALERT_EMAIL.
+vault:
+  secretPath: secret/data/db-monitor/main
+
+livenessProbe:
+  httpGet:
+    path: /api/live
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 5
+
+startupProbe:
+  httpGet:
+    path: /api/live
+    port: http
+  initialDelaySeconds: 10
+  failureThreshold: 30
+  periodSeconds: 10
+  timeoutSeconds: 10
+
+# One pod: the in-process checker must not run twice.
+strategy:
+  type: Recreate
+
+networkPolicy:
+  enabled: true
+  # Databases the console may reach: namespace -> ports.
+  egress:
+    - namespace: database
+      ports: [5432]
+    - namespace: projects
+      ports: [5432, 6379, 3306, 27017]
+    - namespace: argocd
+      ports: [6379]
+    - namespace: monitoring
+      ports: [6379]
+    - namespace: falco
+      ports: [6379]
+    - namespace: git
+      ports: [5432, 6379]

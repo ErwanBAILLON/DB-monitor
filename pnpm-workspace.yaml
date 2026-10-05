@@ -1,0 +1,29 @@
+# pnpm supply-chain hardening (pnpm >= 10.26), same policy as projects/sorago.
+# Copied from projects/caution.
+packages:
+  - '.'
+
+onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
+  - esbuild
+  - prisma
+  - unrs-resolver
+strictDepBuilds: true
+ignoredBuiltDependencies:
+  - core-js
+
+# Never install a version published less than 7 days ago.
+minimumReleaseAge: 10080
+minimumReleaseAgeStrict: false
+minimumReleaseAgeExclude: []
+
+trustPolicy: no-downgrade
+blockExoticSubdeps: true
+trustPolicyExclude:
+  # next-auth beta.30: no provenance on this tag (same pin as threadbox, validated there via its lockfile).
+  - next-auth
+  - chokidar
+  - eslint-import-resolver-typescript
+  - undici-types
+  - semver

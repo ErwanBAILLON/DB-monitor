@@ -1,0 +1,63 @@
+name: Build and Push Docker Image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'helm/**'
+      - '*.md'
+      - '.gitignore'
+
+env:
+  REGISTRY: git.ebaillon.fr
+  IMAGE_NAME: infra/db-monitor
+  DOCKER_HOST: tcp://localhost:2375
+  VERSION: "0.1.${{ github.run_number }}"
+
+jobs:
+  build:
+    name: Build and Push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Unit tests on the glibc runner: vitest's native rolldown binding does
+      # not load on the alpine build image.
+      - name: Unit tests
+        run: |
+          npm install -g pnpm@10.34.5
+          pnpm install --frozen-lockfile
+          pnpm exec prisma generate
+          pnpm test
+
+      - name: Install Docker CLI
+        run: |
+          curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list
+          apt-get update && apt-get install -y docker-ce-cli
+          docker version
+
+      - name: Log in to Gitea Container Registry
+        run: |
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${{ env.REGISTRY }} -u ${{ secrets.REGISTRY_USERNAME }} --password-stdin
+
+      - name: Build Docker image
+        run: |
+          echo "Building version: ${{ env.VERSION }}"
+          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }} .
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Update Helm image tag
+        run: |
+          sed -i "s|tag: .*|tag: \"${{ env.VERSION }}\"|" helm/values.yaml
+          git config user.name "CI Bot"
+          git config user.email "ci@dbmon.ebaillon.fr"
+          git add helm/values.yaml
+          git diff --cached --quiet || git commit -m "chore: bump image tag to ${{ env.VERSION }} [skip ci]"
+          git push || echo "Push failed, tag updated in image only"

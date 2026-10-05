@@ -1,0 +1,61 @@
+{{- if .Values.ingress.enabled }}
+{{- $fullname := include "db-monitor.fullname" . }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "db-monitor.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.ingress.host }}`)
+      kind: Rule
+      {{- if .Values.ingress.hardening.enabled }}
+      middlewares:
+        - name: ratelimit-public
+          namespace: network
+        - name: security-headers
+          namespace: network
+      {{- end }}
+      services:
+        - name: {{ $fullname }}
+          port: {{ .Values.service.port }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    certResolver: {{ .Values.ingress.certResolver }}
+    domains:
+      - main: {{ .Values.ingress.host | quote }}
+  {{- end }}
+---
+# HTTP to HTTPS redirect (LAN clients hitting port 80 directly).
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $fullname }}-redirect
+  labels:
+    {{- include "db-monitor.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`{{ .Values.ingress.host }}`)
+      kind: Rule
+      middlewares:
+        - name: {{ $fullname }}-redirect-https
+      services:
+        - name: {{ $fullname }}
+          port: {{ .Values.service.port }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $fullname }}-redirect-https
+  labels:
+    {{- include "db-monitor.labels" . | nindent 4 }}
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+{{- end }}

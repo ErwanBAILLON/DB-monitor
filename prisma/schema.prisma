@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// A monitored database server. Credentials never leave `secret`, an
+// AES-256-GCM blob keyed by DBMON_ENCRYPTION_KEY (see src/lib/crypto.ts).
+model Instance {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  type        String // postgres | mysql | redis
+  host        String
+  port        Int
+  username    String?
+  database    String? // postgres/mysql: maintenance database to connect to
+  secret      String // encrypted password ("" when none)
+  tls         Boolean  @default(false)
+  environment String   @default("prod")
+  tags        String[] @default([])
+  // Alert thresholds; null = default (see src/lib/alerts.ts).
+  thresholds  Json?
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  checks      Check[]
+  alerts      AlertEvent[]
+
+  @@index([type])
+}
+
+// One probe result. Kept 7 days (see src/lib/checker.ts).
+model Check {
+  id         String   @id @default(cuid())
+  instanceId String
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  at         DateTime @default(now())
+  up         Boolean
+  latencyMs  Int
+  version    String?
+  uptimeSec  Int?
+  connUsed   Int?
+  connMax    Int?
+  // postgres/mysql: total size of all databases; redis: used_memory
+  sizeBytes  BigInt?
+  // redis: maxmemory (0 = unlimited)
+  memMax     BigInt?
+  role       String? // primary | replica | master | slave
+  error      String?
+
+  @@index([instanceId, at])
+  @@index([at])
+}
+
+// Who did what on which instance. Append-only.
+model Audit {
+  id           String   @id @default(cuid())
+  at           DateTime @default(now())
+  actor        String
+  instanceId   String?
+  instanceName String?
+  action       String
+  params       Json?
+  ok           Boolean
+  result       String?
+
+  @@index([at])
+  @@index([instanceId, at])
+}
+
+// An alert condition that fired. resolvedAt null = still active.
+model AlertEvent {
+  id         String    @id @default(cuid())
+  instanceId String
+  instance   Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  kind       String // down | connections | memory
+  message    String
+  firedAt    DateTime  @default(now())
+  resolvedAt DateTime?
+  notifiedAt DateTime?
+
+  @@index([instanceId, kind, resolvedAt])
+}

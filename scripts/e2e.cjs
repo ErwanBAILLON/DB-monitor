@@ -1,0 +1,201 @@
+// End-to-end run against a running server (local or prod).
+//   BASE=http://127.0.0.1:3140 ADMIN_PASSWORD=... PG_HOST=127.0.0.1 PG_PORT=5490 node scripts/e2e.cjs
+// Prod (read-only, uses an already registered instance):
+//   BASE=https://dbmon.ebaillon.fr RESOLVE_IP=192.168.1.150 READONLY=1 INSTANCE=shared-postgres node scripts/e2e.cjs
+// Needs Playwright (PLAYWRIGHT=path to the module).
+const PW = process.env.PLAYWRIGHT || "playwright";
+const { chromium } = require(PW);
+const fs = require("fs");
+
+const BASE = (process.env.BASE || "http://127.0.0.1:3140").replace(/\/$/, "");
+const SHOTS = process.env.SHOTS || "/tmp/dbmon-shots";
+const ADMIN = { user: process.env.ADMIN_USERNAME || "admin", pass: process.env.ADMIN_PASSWORD || "localadmin123" };
+const RESOLVE = process.env.RESOLVE_IP;
+const READONLY = process.env.READONLY === "1";
+const TAG = Date.now().toString(36);
+const INSTANCE = process.env.INSTANCE || `e2e-pg-${TAG}`;
+const PG = { host: process.env.PG_HOST || "127.0.0.1", port: process.env.PG_PORT || "5490", user: process.env.PG_USER || "postgres", pass: process.env.PG_PASS || "" };
+fs.mkdirSync(SHOTS, { recursive: true });
+
+const log = (m) => console.log(`[e2e] ${m}`);
+const fail = (m) => {
+  throw new Error(m);
+};
+async function shot(page, name) {
+  await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  if (overflow > 1) log(`WARN horizontal overflow ${overflow}px on ${name}`);
+}
+
+(async () => {
+  const args = RESOLVE ? [`--host-resolver-rules=MAP ${new URL(BASE).hostname} ${RESOLVE}`] : [];
+  const browser = await chromium.launch({ args });
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: "fr-FR", ignoreHTTPSErrors: !!RESOLVE });
+  const page = await ctx.newPage();
+  page.on("dialog", (d) => d.accept());
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+
+  // 1. Login (unauthenticated /app redirects to /login).
+  await page.goto(`${BASE}/app`);
+  await page.waitForURL(/\/login/);
+  await shot(page, "01-login");
+  await page.fill('input[name="username"]', ADMIN.user);
+  await page.fill('input[name="password"]', "wrong-" + TAG);
+  await page.click('button[type="submit"]');
+  await page.getByText("Identifiants invalides").waitFor();
+  await page.fill('input[name="password"]', ADMIN.pass);
+  await page.click('button[type="submit"]');
+  await page.waitForURL(/\/app$/);
+  log("logged in");
+
+  // 2. Fleet.
+  await page.getByTestId("fleet-summary").waitFor();
+  await shot(page, "02-fleet");
+  const cards = await page.getByTestId("instance-card").count();
+  log(`fleet shows ${cards} instance(s)`);
+
+  let instanceUrl;
+  if (!READONLY) {
+    // 3. Add the local Postgres instance (test connection first, then save).
+    await page.goto(`${BASE}/app/instances/new`);
+    await shot(page, "03-new");
+    const form = page.getByTestId("instance-form");
+    await form.locator('[name="name"]').fill(INSTANCE);
+    await form.locator('[name="type"]').selectOption("postgres");
+    await form.locator('[name="host"]').fill(PG.host);
+    await form.locator('[name="port"]').fill(PG.port);
+    await form.locator('[name="username"]').fill(PG.user);
+    if (PG.pass) await form.locator('[name="password"]').fill(PG.pass);
+    await form.locator('[name="database"]').fill("postgres");
+    await form.locator('[name="environment"]').fill("local");
+    await form.locator('[name="tags"]').fill("e2e, portable");
+    await form.locator('button[type="submit"]').click();
+    await page.waitForURL(/\/app\/instances\/(?!new$)[a-z0-9]+$/);
+    instanceUrl = page.url().split("?")[0];
+    log(`instance created ${instanceUrl}`);
+    // Overview shows the first check (addInstance probes synchronously).
+    await page.getByTestId("last-state").waitFor();
+    const state = await page.getByTestId("last-state").innerText();
+    if (!/^up/.test(state)) fail(`instance not up after creation: ${state}`);
+    await shot(page, "04-overview");
+
+    // Fleet shows it up.
+    await page.goto(`${BASE}/app`);
+    const card = page.locator(`[data-testid="instance-card"][data-name="${INSTANCE}"]`);
+    await card.waitFor();
+    const st = await card.getByTestId("status").getAttribute("data-status");
+    if (st !== "up") fail(`fleet status ${st}`);
+    log("fleet card up");
+    await shot(page, "05-fleet-with-instance");
+  } else {
+    const card = page.locator(`[data-testid="instance-card"][data-name="${INSTANCE}"]`);
+    if (!(await card.count())) fail(`instance ${INSTANCE} not in fleet`);
+    const st = await card.getByTestId("status").getAttribute("data-status");
+    log(`${INSTANCE} status ${st}`);
+    if (st !== "up") fail(`seeded instance not up: ${st}`);
+    await card.locator("a").first().click();
+    await page.waitForURL(/\/app\/instances\/(?!new$)[a-z0-9]+$/);
+    instanceUrl = page.url().split("?")[0];
+  }
+
+  // 4. Test connection button.
+  await page.goto(instanceUrl);
+  const test = page.getByTestId("test-connection");
+  await test.locator("button").click();
+  await test.getByTestId("result").waitFor();
+  const tr = await test.getByTestId("result").innerText();
+  if (!/Connexion OK/.test(tr)) fail(`test connection: ${tr}`);
+  log(tr);
+
+  // 5. Detail tabs.
+  for (const tab of ["databases", "sessions", "locks", "tables", "roles", "settings-pg"]) {
+    await page.goto(`${instanceUrl}?tab=${tab}`);
+    if (await page.getByTestId("engine-error").count()) fail(`tab ${tab}: ${await page.getByTestId("engine-error").innerText()}`);
+    // "tables" may legitimately be empty on a fresh server.
+    await page.locator(tab === "tables" ? "table.tbl, section p" : "table.tbl").first().waitFor();
+    await shot(page, `06-${tab}`);
+  }
+  log("tabs rendered");
+
+  // 6. Read-only query: a SELECT works, a DELETE is refused.
+  await page.goto(`${instanceUrl}?tab=query`);
+  await page.fill('textarea[name="sql"]', "SELECT datname, pg_size_pretty(pg_database_size(oid)) AS size FROM pg_database ORDER BY 1");
+  await page.click('button:has-text("Exécuter")');
+  await page.getByTestId("query-result").waitFor();
+  const n = await page.getByTestId("query-result").locator("tbody tr").count();
+  if (n < 1) fail("query returned no rows");
+  log(`query returned ${n} rows`);
+  await shot(page, "07-query");
+  await page.fill('textarea[name="sql"]', "DELETE FROM pg_database");
+  await page.click('button:has-text("Exécuter")');
+  await page.getByTestId("query-error").waitFor();
+  log(`write refused: ${await page.getByTestId("query-error").innerText()}`);
+
+  // 7. Create a database with owner (local only).
+  const dbName = `e2e_${TAG}`;
+  if (!READONLY) {
+    await page.goto(`${instanceUrl}?tab=actions`);
+    const f = page.getByTestId("create-db-form");
+    await f.locator('[name="name"]').fill(dbName);
+    await f.locator('[name="owner"]').fill(dbName);
+    await f.locator('button[type="submit"]').click();
+    await f.getByTestId("result").waitFor();
+    const r = await f.getByTestId("result").innerText();
+    if (!/créée/.test(r) || !/postgresql:\/\//.test(r)) fail(`create db: ${r}`);
+    log("database created with owner, URL shown once");
+    await shot(page, "08-create-db");
+    await page.goto(`${instanceUrl}?tab=databases`);
+    await page.locator(`td[title="${dbName}"]`).first().waitFor();
+    // dump link present and downloadable (needs pg_dump next to the server; SKIP_DUMP=1 otherwise)
+    if (process.env.SKIP_DUMP === "1") log("dump skipped (SKIP_DUMP=1)");
+    else {
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.locator(`tr:has(td[title="${dbName}"]) a:has-text("dump")`).click()]);
+    const path = await dl.path();
+    const size = fs.statSync(path).size;
+    if (size < 20) fail(`dump too small (${size} b)`);
+    log(`dump downloaded ${dl.suggestedFilename()} ${size} b`);
+    }
+  }
+
+  // 8. Audit shows the rows.
+  await page.goto(`${BASE}/app/audit`);
+  await page.getByTestId("audit-table").waitFor();
+  const actions = await page.locator("tbody tr").evaluateAll((trs) => trs.map((t) => t.getAttribute("data-action")));
+  for (const a of ["instance.test", "query.readonly", ...(READONLY ? [] : ["instance.create", "pg.create_database", ...(process.env.SKIP_DUMP === "1" ? [] : ["pg_dump"])])]) {
+    if (!actions.includes(a)) fail(`audit missing ${a} (have ${actions.slice(0, 10).join(",")})`);
+  }
+  log(`audit ok (${actions.length} rows on page)`);
+  await shot(page, "09-audit");
+
+  // 9. /api/alerts with the session cookie; settings page.
+  const alerts = await page.request.get(`${BASE}/api/alerts`);
+  if (!alerts.ok()) fail(`/api/alerts ${alerts.status()}`);
+  log(`/api/alerts ${JSON.stringify(await alerts.json()).slice(0, 120)}`);
+  await page.goto(`${BASE}/app/settings`);
+  await page.getByText("Intervalle de contrôle").waitFor();
+  await shot(page, "10-settings");
+
+  // 10. Cleanup (local): delete the instance from the registry.
+  if (!READONLY) {
+    await page.goto(`${instanceUrl}?tab=settings`);
+    await page.getByTestId("delete-form").locator("button").click();
+    await page.waitForURL(/\/app$/);
+    if (await page.locator(`[data-testid="instance-card"][data-name="${INSTANCE}"]`).count()) fail("instance still listed after delete");
+    log("instance deleted");
+    console.log(`E2E_DB=${dbName}`);
+  }
+
+  // Unauthenticated API must be refused.
+  const anon = await browser.newContext();
+  const r = await anon.request.get(`${BASE}/api/alerts`, { maxRedirects: 0 });
+  if (r.status() !== 307 && r.status() !== 302 && r.status() !== 401) fail(`anon /api/alerts ${r.status()}`);
+  await anon.close();
+
+  if (errors.length) log(`WARN page errors: ${errors.join(" | ")}`);
+  await browser.close();
+  log("ALL OK");
+})().catch((err) => {
+  console.error("[e2e] FAILED", err);
+  process.exit(1);
+});

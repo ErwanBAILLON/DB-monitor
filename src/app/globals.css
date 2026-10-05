@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --fond: 246 247 249;
+  --encre: 24 29 38;
+  --gris: 100 110 126;
+  --carte: 255 255 255;
+  --trait: 222 226 233;
+  --ok: 22 150 94;
+  --alerte: 206 136 12;
+  --panne: 196 52 44;
+  --accent: 40 86 196;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: 17 20 27;
+    --encre: 230 233 238;
+    --gris: 148 156 170;
+    --carte: 27 31 40;
+    --trait: 52 58 70;
+    --ok: 54 190 128;
+    --alerte: 232 170 48;
+    --panne: 228 86 76;
+    --accent: 112 150 240;
+  }
+}
+
+body {
+  background: rgb(var(--fond));
+  color: rgb(var(--encre));
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-feature-settings: "tnum" 1;
+}
+:focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+}
+
+.card {
+  @apply rounded-md border border-trait bg-carte p-4;
+}
+.field {
+  @apply w-full rounded-sm border border-trait bg-carte px-3 py-2 text-sm text-encre placeholder:text-gris/60 focus:border-accent focus:outline-none;
+}
+.label {
+  @apply mb-1 block text-xs font-medium uppercase tracking-wide text-gris;
+}
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-sm bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50;
+}
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-sm border border-trait px-3 py-1.5 text-sm text-encre transition-colors hover:border-gris disabled:opacity-50;
+}
+.btn-danger {
+  @apply inline-flex items-center justify-center gap-2 rounded-sm bg-panne px-3 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-50;
+}
+.link {
+  @apply text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent;
+}
+.tbl {
+  @apply w-full border-collapse text-sm;
+}
+.tbl th {
+  @apply sticky top-0 border-b border-trait bg-carte px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wide text-gris;
+}
+.tbl td {
+  @apply border-b border-trait/60 px-2 py-1.5 align-top font-mono text-[13px];
+}
+.tbl tr:hover td {
+  @apply bg-fond;
+}
+.tag {
+  @apply inline-block rounded-sm border border-trait px-1.5 py-0.5 text-[11px] text-gris;
+}
+.dot {
+  @apply inline-block h-2.5 w-2.5 rounded-full;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,14 @@
+apiVersion: v2
+name: db-monitor
+description: DB Monitor - console de flotte pour les bases de données du homelab
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - postgres
+  - redis
+  - mysql
+  - monitoring
+maintainers:
+  - name: couscous
+    email: couscous@ebaillon.fr
