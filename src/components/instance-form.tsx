@@ -15,6 +15,7 @@ const HOST_HINT: Record<EngineType, string> = {
   mssql: "mssql.projects.svc.cluster.local",
   sqlite: "localhost (fichier local au pod)",
   cassandra: "scylla.projects.svc.cluster.local (port CQL)",
+  influxdb: "influxdb.projects.svc.cluster.local (port HTTP)",
 };
 const USER_HINT: Record<EngineType, string> = {
   postgres: "dbmon",
@@ -27,6 +28,7 @@ const USER_HINT: Record<EngineType, string> = {
   mssql: "sa ou un login VIEW SERVER STATE",
   sqlite: "(aucun)",
   cassandra: "cassandra (vide sans authentification)",
+  influxdb: "(ignoré : le token va dans le mot de passe)",
 };
 
 export function InstanceForm({ instance, action, submitLabel }: { instance?: Instance; action: (fd: FormData) => Promise<void>; submitLabel: string }) {
@@ -66,7 +68,7 @@ export function InstanceForm({ instance, action, submitLabel }: { instance?: Ins
         <input name="username" className="field" defaultValue={i?.username ?? ""} autoComplete="off" placeholder={USER_HINT[type]} />
       </label>
       <label>
-        <span className="label">Mot de passe {i && <span className="normal-case text-gris">(vide = inchangé)</span>}</span>
+        <span className="label">{type === "influxdb" ? "Token API" : "Mot de passe"} {i && <span className="normal-case text-gris">(vide = inchangé)</span>}</span>
         <input name="password" type="password" className="field" autoComplete="new-password" />
       </label>
       <label>

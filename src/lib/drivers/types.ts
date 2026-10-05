@@ -1,5 +1,5 @@
-export type EngineType = "postgres" | "cockroach" | "mysql" | "redis" | "mongodb" | "clickhouse" | "opensearch" | "mssql" | "sqlite" | "cassandra";
-export const ENGINES: EngineType[] = ["postgres", "cockroach", "mysql", "redis", "mongodb", "clickhouse", "opensearch", "mssql", "sqlite", "cassandra"];
+export type EngineType = "postgres" | "cockroach" | "mysql" | "redis" | "mongodb" | "clickhouse" | "opensearch" | "mssql" | "sqlite" | "cassandra" | "influxdb";
+export const ENGINES: EngineType[] = ["postgres", "cockroach", "mysql", "redis", "mongodb", "clickhouse", "opensearch", "mssql", "sqlite", "cassandra", "influxdb"];
 // Fleet grouping: databases, caches, message brokers, object stores.
 export type EngineCategory = "database" | "cache" | "broker" | "object-store";
 export const CATEGORY_LABEL: Record<EngineCategory, string> = { database: "Bases de données", cache: "Caches", broker: "Brokers", "object-store": "Stockage objet" };
@@ -15,6 +15,7 @@ export const ENGINE_CATEGORY: Record<EngineType, EngineCategory> = {
   mssql: "database",
   sqlite: "database",
   cassandra: "database",
+  influxdb: "database",
 };
 export const ENGINE_LABEL: Record<EngineType, string> = {
   postgres: "PostgreSQL",
@@ -27,6 +28,7 @@ export const ENGINE_LABEL: Record<EngineType, string> = {
   mssql: "SQL Server",
   sqlite: "SQLite (fichier monté)",
   cassandra: "Cassandra / ScyllaDB",
+  influxdb: "InfluxDB 2.x",
 };
 export const DEFAULT_PORT: Record<EngineType, number> = {
   postgres: 5432,
@@ -39,11 +41,12 @@ export const DEFAULT_PORT: Record<EngineType, number> = {
   mssql: 1433,
   sqlite: 0,
   cassandra: 9042,
+  influxdb: 8086,
 };
 // Short badge shown on fleet cards and instance headers.
-export const ENGINE_BADGE: Record<EngineType, string> = { postgres: "PG", cockroach: "CR", mysql: "MY", redis: "RD", mongodb: "MG", clickhouse: "CH", opensearch: "OS", mssql: "MS", sqlite: "SQ", cassandra: "CS" };
+export const ENGINE_BADGE: Record<EngineType, string> = { postgres: "PG", cockroach: "CR", mysql: "MY", redis: "RD", mongodb: "MG", clickhouse: "CH", opensearch: "OS", mssql: "MS", sqlite: "SQ", cassandra: "CS", influxdb: "IX" };
 // Which engines offer a read-only SQL/query console (`query` tab).
-export const HAS_CONSOLE: Record<EngineType, boolean> = { postgres: true, cockroach: true, mysql: true, redis: false, mongodb: true, clickhouse: true, opensearch: true, mssql: true, sqlite: true, cassandra: true };
+export const HAS_CONSOLE: Record<EngineType, boolean> = { postgres: true, cockroach: true, mysql: true, redis: false, mongodb: true, clickhouse: true, opensearch: true, mssql: true, sqlite: true, cassandra: true, influxdb: true };
 // Hint for the "database / path" field of the instance form.
 export const DATABASE_HINT: Record<EngineType, string> = {
   postgres: "Base de maintenance (postgres)",
@@ -56,9 +59,10 @@ export const DATABASE_HINT: Record<EngineType, string> = {
   mssql: "Base par défaut (master)",
   sqlite: "Chemin du fichier .db dans le pod",
   cassandra: "Keyspace par défaut (optionnel)",
+  influxdb: "Organisation (nom)",
 };
 // Label of the size cell: Redis reports used memory, the others a total data size.
-export const SIZE_LABEL: Record<EngineType, string> = { postgres: "Taille", cockroach: "Taille", mysql: "Taille", redis: "Mémoire", mongodb: "Taille", clickhouse: "Taille", opensearch: "Taille", mssql: "Taille", sqlite: "Fichier", cassandra: "Taille (estimée)" };
+export const SIZE_LABEL: Record<EngineType, string> = { postgres: "Taille", cockroach: "Taille", mysql: "Taille", redis: "Mémoire", mongodb: "Taille", clickhouse: "Taille", opensearch: "Taille", mssql: "Taille", sqlite: "Fichier", cassandra: "Taille (estimée)", influxdb: "Taille" };
 
 // Decrypted connection parameters, built from an Instance row (never persisted).
 export type Conn = {

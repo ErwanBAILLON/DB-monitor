@@ -169,3 +169,33 @@ grants. No action (no `nodetool`, no `TRUNCATE`) is offered.
 The driver opens a short-lived `cassandra-driver` client per call (control
 connection + one connection) with `RoundRobinPolicy` so no `localDataCenter`
 is needed. TLS: `sslOptions` without CA verification, like the other engines.
+
+## InfluxDB 2.x (`influxdb`, HTTP API, default port 8086)
+
+The instance's **password field holds the API token** (user name ignored) and
+the **database field holds the organisation name** used by the console and
+the cardinality queries.
+
+| Need | Token permission |
+|---|---|
+| Probe (`/health`, `/ready`, `GET /api/v2/orgs`, `GET /api/v2/buckets`) | `read:orgs`, `read:buckets` (`/health` and `/ready` need no token) |
+| Buckets tab cardinality (`influxdb.cardinality(bucket, start: -30d)` through `/api/v2/query`) | `read:buckets` on each bucket (a read-only "all buckets" token is enough) |
+| Tasks tab (`GET /api/v2/tasks`, `GET /api/v2/tasks/{id}/runs?limit=1`) | `read:tasks` |
+| Flux console | `read:buckets` on the queried buckets |
+
+Create a read-only token in the UI (Load Data > API Tokens > Custom: Read on
+buckets, orgs, tasks) rather than registering the operator token: Flux has no
+server-side read-only mode, the token's scopes are the real barrier.
+
+Console guard (`guardFlux`): `range()` required unless the query is a schema
+helper (`buckets()`, `schema.*`, `influxdb.cardinality`, `v1.*`); refused
+anywhere: `to()`, `wideTo()`, `experimental`, `http`, `sql`, `secrets`,
+`contrib`, `influxdb.api`, `monitor.notify/check`, every notification package
+(`slack`, `pagerduty`, `discord`, `smtp`, `kafka`, `mqtt`...), `exec`;
+`import "..."` only from an allowlist of pure packages (`strings`, `regexp`,
+`math`, `date`, `json`, `array`, `dict`, `types`, `influxdata/influxdb`,
+`/schema`, `/v1`, `join`, `table`, `interpolate`, `timezone`, `runtime`,
+`sampledata`, `generate`, `profiler`). `|> limit(n: 200)` is appended, the
+HTTP request is cut after 5 s (the server cancels on disconnect), results are
+annotated CSV parsed into rows (several tables are concatenated with their
+`table` index). Not covered: `/api/v2/delete`, `/api/v2/write` (never called).

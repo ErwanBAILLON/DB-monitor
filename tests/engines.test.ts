@@ -226,13 +226,14 @@ describe("cassandra parsers and CQL guard", () => {
       expect(r.ok, s).toBe(false);
       if (!r.ok) expect(r.reason).toMatch(re);
     };
-    expect(ok("SELECT * FROM system.local")).toBe("SELECT * FROM system.local LIMIT 200");
-    expect(ok("select * from system.local;")).toBe("select * from system.local LIMIT 200");
+    expect(ok("SELECT * FROM system.local")).toBe("SELECT * FROM system.local\nLIMIT 200");
+    expect(ok("select * from system.local;")).toBe("select * from system.local\nLIMIT 200");
     expect(ok("SELECT * FROM t LIMIT 10")).toBe("SELECT * FROM t LIMIT 10");
     expect(ok("SELECT * FROM t LIMIT 5000")).toBe("SELECT * FROM t LIMIT 200");
-    expect(ok("SELECT * FROM t WHERE a = 1 ALLOW FILTERING")).toBe("SELECT * FROM t WHERE a = 1 LIMIT 200 ALLOW FILTERING");
+    expect(ok("SELECT * FROM t WHERE a = 1 ALLOW FILTERING")).toBe("SELECT * FROM t WHERE a = 1\nLIMIT 200 ALLOW FILTERING");
     expect(ok("SELECT * FROM t LIMIT 999 ALLOW FILTERING")).toBe("SELECT * FROM t LIMIT 200 ALLOW FILTERING");
     expect(ok("SELECT * FROM t WHERE name = 'DROP TABLE x'")).toContain("LIMIT 200");
+    expect(ok("SELECT * FROM t WHERE url = 'http://x' -- c")).toBe("SELECT * FROM t WHERE url = 'http://x' -- c\nLIMIT 200");
     ko("", /vide/);
     ko("INSERT INTO t (a) VALUES (1)", /SELECT/);
     ko("UPDATE t SET a = 1 WHERE b = 2", /SELECT/);
@@ -248,5 +249,60 @@ describe("cassandra parsers and CQL guard", () => {
     ko("SELECT * FROM system_auth.roles", /system_auth/);
     ko("SELECT * FROM t LIMIT :n", /LIMIT/);
     ko('SELECT "DROP"(1) FROM t', /guillemets/);
+  });
+});
+
+describe("influxdb parsers and Flux guard", () => {
+  it("parses Go durations and builds the probe", async () => {
+    const { fromHealth, parseGoDuration, retentionLabel } = await import("@/lib/drivers/influxdb");
+    expect(parseGoDuration("14m15.114803232s")).toBe(855);
+    expect(parseGoDuration("2h3m4s")).toBe(7384);
+    expect(parseGoDuration("26.3s")).toBe(26);
+    expect(parseGoDuration(undefined)).toBeUndefined();
+    expect(fromHealth({ status: "pass", version: "v2.7.12" }, { status: "ready", up: "1h" }, [{ id: "o" }], [{ type: "user" }, { type: "system" }, { type: "user" }])).toEqual({ version: "2.7.12", uptimeSec: 3600, role: "pass · 1 org · 2 buckets" });
+    expect(retentionLabel([{ type: "expire", everySeconds: 604800 }])).toBe("7 j");
+    expect(retentionLabel([{ type: "expire", everySeconds: 0 }])).toBe("infini");
+    expect(retentionLabel([{ everySeconds: 7200 }])).toBe("2 h");
+  });
+  it("parses annotated CSV with several tables and typed columns", async () => {
+    const { parseAnnotatedCsv } = await import("@/lib/drivers/influxdb");
+    const csv = '#datatype,string,long,dateTime:RFC3339,double,string\n#group,false,false,false,false,true\n#default,_result,,,,\n,result,table,_time,_value,host\n,_result,0,2026-10-05T12:00:00Z,0.5,"a,b"\n,_result,0,2026-10-05T12:01:00Z,,a\n\n#datatype,string,long,long\n#group,false,false,false\n#default,_result,,\n,result,table,_value\n,_result,1,42\n';
+    const r = parseAnnotatedCsv(csv);
+    expect(r.columns).toEqual(["table", "_time", "_value", "host"]);
+    expect(r.rows).toEqual([
+      { table: 0, _time: "2026-10-05T12:00:00Z", _value: 0.5, host: "a,b" },
+      { table: 0, _time: "2026-10-05T12:01:00Z", _value: null, host: "a" },
+      { table: 1, _value: 42 },
+    ]);
+    expect(parseAnnotatedCsv("").rows).toEqual([]);
+  });
+  it("Flux guard: range() required, no to()/experimental/http/sql/secrets, limit appended", async () => {
+    const { guardFlux } = await import("@/lib/drivers/influxdb");
+    const ok = (s: string) => {
+      const r = guardFlux(s);
+      expect(r.ok, s).toBe(true);
+      return r.ok ? r.flux : "";
+    };
+    const ko = (s: string, re: RegExp) => {
+      const r = guardFlux(s);
+      expect(r.ok, s).toBe(false);
+      if (!r.ok) expect(r.reason).toMatch(re);
+    };
+    expect(ok('from(bucket: "m") |> range(start: -1h)')).toBe('from(bucket: "m") |> range(start: -1h)\n  |> limit(n: 200)');
+    ok('import "influxdata/influxdb/schema"\nschema.measurements(bucket: "m")');
+    ok("buckets()");
+    ok('import "influxdata/influxdb"\ninfluxdb.cardinality(bucket: "m", start: -1d)');
+    ok('from(bucket: "m") |> range(start: -1h) |> filter(fn: (r) => r.host == "to(")');
+    ok('from(bucket: "m") |> range(start: -1h) |> filter(fn: (r) => r.url == "http://x") // to()');
+    ko("", /vide/);
+    ko('from(bucket: "m") |> filter(fn: (r) => true)', /range/);
+    ko('from(bucket: "m") |> range(start: -1h) |> to(bucket: "other")', /to\(\)/);
+    ko('import "experimental"\nexperimental.to(bucket: "x")', /experimental|Import|to\(\)/);
+    ko('import "experimental/http"\nhttp.post(url: "http://x")', /http|Import/);
+    ko('import "sql"\nsql.from(driverName: "postgres", dataSourceName: "", query: "")', /sql|Import/);
+    ko('import "influxdata/influxdb/secrets"\nsecrets.get(key: "k")', /secrets|Import/);
+    ko('import "slack"\nfrom(bucket:"m") |> range(start:-1h)', /Import|notification/);
+    ko('from(bucket: "m") |> range(start: -1h) |> wideTo(bucket: "x")', /wideTo/);
+    ko('from(bucket: "m") |> range(start: -1h) |> filter(fn: (r) => r.a == "unterminated)', /Littéral/);
   });
 });

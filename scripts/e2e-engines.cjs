@@ -49,7 +49,7 @@ const log = (m) => console.log(`[tour] ${m}`);
       await page.fill('input[name="tags"]', s.tags || "dbmon-test");
       if (s.tls) await page.check('input[name="tls"]');
       await page.click('[data-testid="instance-form"] button[type="submit"]');
-      await page.waitForURL(/\/app\/instances\/[^/?]+$/, { timeout: 30_000 });
+      await page.waitForURL(/\/app\/instances\/(?!new$)[^/?]+$/, { timeout: 30_000 });
       log(`${s.name}: created`);
     } else {
       await card.locator("a").first().click();

@@ -208,12 +208,8 @@ export function guardCql(input: string): CqlGuard {
   const raw = input.trim().replace(/;\s*$/, "");
   if (!raw) return { ok: false, reason: "Requête vide." };
   if (raw.length > 10_000) return { ok: false, reason: "Requête trop longue." };
-  const stripped = raw
-    .replace(/--[^\n]*/g, " ")
-    .replace(/\/\/[^\n]*/g, " ")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/\$\$[\s\S]*?\$\$/g, " '' ")
-    .replace(/'(?:[^']|'')*'/g, " '' ");
+  // Strings and comments in one pass: a "--" or "//" inside a string literal is not a comment.
+  const stripped = raw.replace(/\$\$[\s\S]*?\$\$|'(?:[^']|'')*'|--[^\n]*|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (m) => (m.startsWith("'") || m.startsWith("$$") ? " '' " : " "));
   if (/'(?!')/.test(stripped.replace(/''/g, ""))) return { ok: false, reason: "Littéral non terminé." };
   if (stripped.includes(";")) return { ok: false, reason: "Une seule instruction autorisée." };
   if (/"[^"]*"\s*\(/.test(stripped)) return { ok: false, reason: "Appel de fonction via un identifiant entre guillemets interdit." };
@@ -232,7 +228,8 @@ export function guardCql(input: string): CqlGuard {
     return { ok: false, reason: "LIMIT doit être un entier littéral en fin de requête." };
   } else {
     const af = raw.match(/\s+allow\s+filtering\s*$/i);
-    cql = af ? `${raw.slice(0, af.index)} LIMIT ${CONSOLE_LIMIT} ALLOW FILTERING` : `${raw} LIMIT ${CONSOLE_LIMIT}`;
+    // On its own line: a trailing `-- comment` must not swallow the appended LIMIT.
+    cql = af ? `${raw.slice(0, af.index)}\nLIMIT ${CONSOLE_LIMIT} ALLOW FILTERING` : `${raw}\nLIMIT ${CONSOLE_LIMIT}`;
   }
   return { ok: true, cql };
 }

@@ -10,6 +10,7 @@ import { OpensearchTabs, opensearchTabList } from "./opensearch";
 import { MssqlTabs, mssqlTabList } from "./mssql";
 import { SqliteTabs, sqliteTabList } from "./sqlite";
 import { CassandraTabs, cassandraTabList } from "./cassandra";
+import { InfluxTabs, influxTabList } from "./influxdb";
 
 export type TabDef = { key: string; label: string };
 export type EngineTabs = { tabs: TabDef[]; render: (p: { inst: Instance; conn: Conn; tab: string }) => Promise<React.ReactNode> };
@@ -26,4 +27,5 @@ export const ENGINE_TABS: Record<EngineType, EngineTabs> = {
   mssql: { tabs: mssqlTabList, render: MssqlTabs },
   sqlite: { tabs: sqliteTabList, render: SqliteTabs },
   cassandra: { tabs: cassandraTabList, render: CassandraTabs },
+  influxdb: { tabs: influxTabList, render: InfluxTabs },
 };
