@@ -10,7 +10,7 @@ describe("engine registry", () => {
   it("has a label, badge, default port and console flag for every engine", () => {
     for (const e of ENGINES) {
       expect(ENGINE_LABEL[e]).toBeTruthy();
-      expect(ENGINE_BADGE[e]).toMatch(/^[A-Z]{2}$/);
+      expect(ENGINE_BADGE[e]).toMatch(/^[A-Z][A-Z0-9]$/);
       expect(DEFAULT_PORT[e]).toBeGreaterThanOrEqual(0);
       expect(typeof HAS_CONSOLE[e]).toBe("boolean");
     }
@@ -389,5 +389,17 @@ describe("rabbitmq parsers", () => {
     const alarms = fromOverview({ rabbitmq_version: "3.13.7", object_totals: {} }, [{ name: "rabbit@a", mem_alarm: true, disk_free_alarm: true, running: true }, { name: "rabbit@b", running: false }]);
     expect(alarms.role).toBe("2 nœuds · 0 file · 0 consommateur · alarme mémoire rabbit@a, disque rabbit@a, rabbit@b arrêté");
     expect(alarms.memMax).toBeUndefined();
+  });
+});
+
+describe("s3 helpers", () => {
+  it("builds a path-style client with the instance credentials", async () => {
+    const { clientOf, OBJECT_CAP } = await import("@/lib/drivers/s3");
+    const client = clientOf({ type: "s3", host: "minio.storage.svc.cluster.local", port: 9000, username: "k", password: "s", database: "", tls: false });
+    expect(await client.config.region()).toBe("us-east-1");
+    expect(client.config.forcePathStyle).toBe(true);
+    expect((await client.config.credentials()).accessKeyId).toBe("k");
+    expect(OBJECT_CAP).toBe(5000);
+    client.destroy();
   });
 });

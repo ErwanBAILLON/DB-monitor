@@ -143,5 +143,8 @@ networkPolicy:
       ports: [6379]
     - namespace: git
       ports: [5432, 6379]
+    - namespace: storage
+      # minio S3 API
+      ports: [9000]
   # Extra app-level targets outside the cluster DNS pattern, e.g. "db.lan:5432".
   extraTargets: []

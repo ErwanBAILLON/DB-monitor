@@ -1,5 +1,5 @@
-export type EngineType = "postgres" | "cockroach" | "mysql" | "redis" | "mongodb" | "clickhouse" | "opensearch" | "mssql" | "sqlite" | "cassandra" | "influxdb" | "neo4j" | "etcd" | "rabbitmq";
-export const ENGINES: EngineType[] = ["postgres", "cockroach", "mysql", "redis", "mongodb", "clickhouse", "opensearch", "mssql", "sqlite", "cassandra", "influxdb", "neo4j", "etcd", "rabbitmq"];
+export type EngineType = "postgres" | "cockroach" | "mysql" | "redis" | "mongodb" | "clickhouse" | "opensearch" | "mssql" | "sqlite" | "cassandra" | "influxdb" | "neo4j" | "etcd" | "rabbitmq" | "s3";
+export const ENGINES: EngineType[] = ["postgres", "cockroach", "mysql", "redis", "mongodb", "clickhouse", "opensearch", "mssql", "sqlite", "cassandra", "influxdb", "neo4j", "etcd", "rabbitmq", "s3"];
 // Fleet grouping: databases, caches, message brokers, object stores.
 export type EngineCategory = "database" | "cache" | "broker" | "object-store";
 export const CATEGORY_LABEL: Record<EngineCategory, string> = { database: "Bases de données", cache: "Caches", broker: "Brokers", "object-store": "Stockage objet" };
@@ -19,6 +19,7 @@ export const ENGINE_CATEGORY: Record<EngineType, EngineCategory> = {
   neo4j: "database",
   etcd: "database",
   rabbitmq: "broker",
+  s3: "object-store",
 };
 export const ENGINE_LABEL: Record<EngineType, string> = {
   postgres: "PostgreSQL",
@@ -35,6 +36,7 @@ export const ENGINE_LABEL: Record<EngineType, string> = {
   neo4j: "Neo4j 5",
   etcd: "etcd v3 (lecture seule)",
   rabbitmq: "RabbitMQ (API management)",
+  s3: "MinIO / S3 (lecture seule)",
 };
 export const DEFAULT_PORT: Record<EngineType, number> = {
   postgres: 5432,
@@ -51,11 +53,12 @@ export const DEFAULT_PORT: Record<EngineType, number> = {
   neo4j: 7687,
   etcd: 2379,
   rabbitmq: 15672,
+  s3: 9000,
 };
 // Short badge shown on fleet cards and instance headers.
-export const ENGINE_BADGE: Record<EngineType, string> = { postgres: "PG", cockroach: "CR", mysql: "MY", redis: "RD", mongodb: "MG", clickhouse: "CH", opensearch: "OS", mssql: "MS", sqlite: "SQ", cassandra: "CS", influxdb: "IX", neo4j: "NJ", etcd: "ET", rabbitmq: "RM" };
+export const ENGINE_BADGE: Record<EngineType, string> = { postgres: "PG", cockroach: "CR", mysql: "MY", redis: "RD", mongodb: "MG", clickhouse: "CH", opensearch: "OS", mssql: "MS", sqlite: "SQ", cassandra: "CS", influxdb: "IX", neo4j: "NJ", etcd: "ET", rabbitmq: "RM", s3: "S3" };
 // Which engines offer a read-only SQL/query console (`query` tab).
-export const HAS_CONSOLE: Record<EngineType, boolean> = { postgres: true, cockroach: true, mysql: true, redis: false, mongodb: true, clickhouse: true, opensearch: true, mssql: true, sqlite: true, cassandra: true, influxdb: true, neo4j: true, etcd: false, rabbitmq: false };
+export const HAS_CONSOLE: Record<EngineType, boolean> = { postgres: true, cockroach: true, mysql: true, redis: false, mongodb: true, clickhouse: true, opensearch: true, mssql: true, sqlite: true, cassandra: true, influxdb: true, neo4j: true, etcd: false, rabbitmq: false, s3: false };
 // Hint for the "database / path" field of the instance form.
 export const DATABASE_HINT: Record<EngineType, string> = {
   postgres: "Base de maintenance (postgres)",
@@ -72,9 +75,10 @@ export const DATABASE_HINT: Record<EngineType, string> = {
   neo4j: "Base par défaut (neo4j)",
   etcd: "Quota en octets (--quota-backend-bytes, défaut 2 Gio)",
   rabbitmq: "Préfixe d'URL (optionnel, ex. /rabbitmq)",
+  s3: "Région (us-east-1 par défaut)",
 };
 // Label of the size cell: Redis reports used memory, the others a total data size.
-export const SIZE_LABEL: Record<EngineType, string> = { postgres: "Taille", cockroach: "Taille", mysql: "Taille", redis: "Mémoire", mongodb: "Taille", clickhouse: "Taille", opensearch: "Taille", mssql: "Taille", sqlite: "Fichier", cassandra: "Taille (estimée)", influxdb: "Taille", neo4j: "Store", etcd: "dbSize", rabbitmq: "Mémoire" };
+export const SIZE_LABEL: Record<EngineType, string> = { postgres: "Taille", cockroach: "Taille", mysql: "Taille", redis: "Mémoire", mongodb: "Taille", clickhouse: "Taille", opensearch: "Taille", mssql: "Taille", sqlite: "Fichier", cassandra: "Taille (estimée)", influxdb: "Taille", neo4j: "Store", etcd: "dbSize", rabbitmq: "Mémoire", s3: "Volume" };
 
 // Decrypted connection parameters, built from an Instance row (never persisted).
 export type Conn = {

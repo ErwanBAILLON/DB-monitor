@@ -19,6 +19,7 @@ const HOST_HINT: Record<EngineType, string> = {
   neo4j: "neo4j.projects.svc.cluster.local (port Bolt)",
   etcd: "etcd.projects.svc.cluster.local (port client)",
   rabbitmq: "rabbitmq.projects.svc.cluster.local (port management 15672)",
+  s3: "minio.storage.svc.cluster.local (API S3 9000)",
 };
 const USER_HINT: Record<EngineType, string> = {
   postgres: "dbmon",
@@ -35,6 +36,7 @@ const USER_HINT: Record<EngineType, string> = {
   neo4j: "neo4j ou un utilisateur reader + admin pour TERMINATE",
   etcd: "vide sans auth, sinon un utilisateur avec rôle lecture",
   rabbitmq: "utilisateur avec le tag monitoring",
+  s3: "access key en lecture seule (secret key dans mot de passe)",
 };
 
 export function InstanceForm({ instance, action, submitLabel }: { instance?: Instance; action: (fd: FormData) => Promise<void>; submitLabel: string }) {
@@ -74,7 +76,7 @@ export function InstanceForm({ instance, action, submitLabel }: { instance?: Ins
         <input name="username" className="field" defaultValue={i?.username ?? ""} autoComplete="off" placeholder={USER_HINT[type]} />
       </label>
       <label>
-        <span className="label">{type === "influxdb" ? "Token API" : "Mot de passe"} {i && <span className="normal-case text-gris">(vide = inchangé)</span>}</span>
+        <span className="label">{type === "influxdb" ? "Token API" : type === "s3" ? "Secret key" : "Mot de passe"} {i && <span className="normal-case text-gris">(vide = inchangé)</span>}</span>
         <input name="password" type="password" className="field" autoComplete="new-password" />
       </label>
       <label>

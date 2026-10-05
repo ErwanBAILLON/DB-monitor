@@ -291,3 +291,27 @@ The fleet card shows memory used vs the node's `mem_limit`
 (`vm_memory_high_watermark`), so the "memory > 85 %" alert applies to brokers
 too; `connMax` is the node's `sockets_total`. The "database" field may hold a
 URL prefix (reverse proxy). Queues are the first 200 sorted by `messages`.
+
+## MinIO / S3-compatible (`s3`, S3 API, default port 9000, category object store)
+
+Access key in the user field, secret key in the password field, optional
+region in the database field (`us-east-1` default; MinIO ignores it). Path-style
+addressing (`forcePathStyle`), one attempt, 5 s timeouts (20 s for the
+buckets tab).
+
+| Need | IAM action |
+|---|---|
+| Probe (`ListBuckets`) | `s3:ListAllMyBuckets` |
+| Buckets tab (`ListObjectsV2`, `GetBucketLocation`, `GetBucketVersioning`) | `s3:ListBucket`, `s3:GetBucketLocation`, `s3:GetBucketVersioning` on `arn:aws:s3:::*` |
+
+The homelab MinIO is registered with a dedicated user carrying exactly that
+policy (`dbmon-readonly-list`, created with `mc admin policy create` +
+`mc admin user add` + `mc admin policy attach` from the MinIO pod); the
+integration test verifies that a `PutObject` with that key is refused
+(`Access Denied`). No `GetObject`: object contents are never readable from the
+console, only names are listed while counting. Counting stops after 5000
+objects per bucket (`>=` prefix), so a huge bucket is a lower bound: use the
+MinIO console or `mc du` for exact figures.
+
+Version: S3 has no version call; the `Server` response header of an
+unauthenticated `GET /` (`MinIO`, `AmazonS3`...) is shown instead.

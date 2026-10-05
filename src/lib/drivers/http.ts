@@ -6,7 +6,7 @@ import https from "node:https";
 // internal self-signed certificates (same semantics as the pg/mysql/redis drivers:
 // TLS without CA verification, see README "Limits").
 
-export type HttpResult = { status: number; text: string };
+export type HttpResult = { status: number; text: string; headers: Record<string, string | string[] | undefined> };
 
 export function httpRequest(opts: { url: URL; method?: string; headers?: Record<string, string>; body?: string; timeoutMs: number; insecureTls?: boolean }): Promise<HttpResult> {
   const mod = opts.url.protocol === "https:" ? https : http;
@@ -22,7 +22,7 @@ export function httpRequest(opts: { url: URL; method?: string; headers?: Record<
       (res) => {
         const chunks: Buffer[] = [];
         res.on("data", (d: Buffer) => chunks.push(d));
-        res.on("end", () => resolve({ status: res.statusCode ?? 0, text: Buffer.concat(chunks).toString("utf8") }));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, text: Buffer.concat(chunks).toString("utf8"), headers: res.headers }));
         res.on("error", reject);
       },
     );
