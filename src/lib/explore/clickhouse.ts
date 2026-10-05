@@ -1,5 +1,5 @@
 import { readOnlyExec, toRows, type ChRun } from "@/lib/drivers/clickhouse";
-import type { Conn, Row } from "@/lib/drivers/types";
+import type { Row } from "@/lib/drivers/types";
 import { assertExploreIdent, composeBrowse, quoteBacktick, splitQualified } from "./sql";
 import { PROFILE_SAMPLE, truncateCell, type BrowseRequest, type BrowseResult, type ColumnProfile, type ExploreColumn, type ExploreContainer, type ExploreDescription, type ExploreIndex, type ExploreObject, type ExploreStats, type Explorer, type StatSection } from "./types";
 

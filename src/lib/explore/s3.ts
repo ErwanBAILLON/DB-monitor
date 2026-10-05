@@ -1,7 +1,7 @@
 import { GetBucketLocationCommand, GetBucketVersioningCommand, GetObjectCommand, HeadObjectCommand, ListBucketsCommand, ListObjectsV2Command, type S3Client, type _Object } from "@aws-sdk/client-s3";
 import { clientOf, serverHeader } from "@/lib/drivers/s3";
 import { plainRow, withTimeout, type Conn, type Row } from "@/lib/drivers/types";
-import { FILTER_OPS, PROFILE_SAMPLE, CELL_MAX_BYTES, truncateCell, type BrowseRequest, type BrowseResult, type ColumnProfile, type ExploreContainer, type ExploreDescription, type ExploreFilter, type ExploreObject, type ExploreStats, type Explorer, type StatSection } from "./types";
+import { FILTER_OPS, PROFILE_SAMPLE, CELL_MAX_BYTES, truncateCell, type BrowseRequest, type BrowseResult, type ColumnProfile, type ExploreContainer, type ExploreDescription, type ExploreFilter, type ExploreObject, type Explorer, type StatSection } from "./types";
 
 // MinIO / S3 explorer, read-only (ListBuckets, ListObjectsV2, GetBucketLocation/Versioning,
 // HeadObject, GetObject with a 4 KiB Range for text previews). No SQL: S3 only filters by
