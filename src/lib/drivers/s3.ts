@@ -102,7 +102,15 @@ export async function detail(c: Conn): Promise<S3Detail> {
     const totalBytes = buckets.reduce((acc, b) => acc + (b._bytes as bigint), 0n);
     const totalObjects = buckets.reduce((acc, b) => acc + (b._objects as number), 0);
     const anyCapped = buckets.some((b) => b.capped);
-    return { buckets: buckets.map(({ _bytes: _b, _objects: _o, ...rest }) => rest).sort((a, b) => Number(BigInt(String(b.size_bytes ?? 0)) - BigInt(String(a.size_bytes ?? 0)))), totalBytes, totalObjects, anyCapped, server, owner: res.Owner?.DisplayName };
+    const rows: Row[] = buckets
+      .sort((a, b) => Number((b._bytes as bigint) - (a._bytes as bigint)))
+      .map((b) => {
+        const { _bytes, _objects, ...rest } = b;
+        void _bytes;
+        void _objects;
+        return rest;
+      });
+    return { buckets: rows, totalBytes, totalObjects, anyCapped, server, owner: res.Owner?.DisplayName };
   } finally {
     client.destroy();
   }
