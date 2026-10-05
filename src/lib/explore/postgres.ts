@@ -269,7 +269,7 @@ export const explorer: Explorer = {
         title: "Plus grosses tables",
         columns: ["table", "total_bytes", "heap_bytes", "index_bytes", "est_rows"],
         rows: await rows(`SELECT n.nspname || '.' || c.relname AS "table", pg_total_relation_size(c.oid) AS total_bytes, pg_relation_size(c.oid) AS heap_bytes,
-                                 pg_indexes_size(c.oid) AS index_bytes, c.reltuples::bigint AS est_rows
+                                 pg_indexes_size(c.oid) AS index_bytes, nullif(c.reltuples, -1)::bigint AS est_rows
                             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                            WHERE c.relkind IN ('r','m','p') AND n.nspname NOT IN ('pg_catalog','information_schema','pg_toast')
                            ORDER BY pg_total_relation_size(c.oid) DESC LIMIT 20`),

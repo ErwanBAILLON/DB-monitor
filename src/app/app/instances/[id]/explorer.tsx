@@ -407,6 +407,12 @@ function DataPanel({ instanceId, container, object }: { instanceId: string; cont
     setTimeout(() => setCopied(null), 1200);
   };
   const totalPages = res?.total !== null && res?.total !== undefined ? Math.max(1, Math.ceil(res.total / pageSize)) : null;
+  useEffect(() => {
+    if (!drawer) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawer]);
 
   return (
     <div className="space-y-3" data-testid="data-panel">
@@ -533,6 +539,7 @@ function DataPanel({ instanceId, container, object }: { instanceId: string; cont
           )}
         </>
       )}
+      {drawer && <div className="fixed inset-0 z-10 bg-encre/20" onClick={() => setDrawer(null)} aria-hidden data-testid="cell-drawer-backdrop" />}
       {drawer && (
         <div className="fixed inset-y-0 right-0 z-20 flex w-full max-w-xl flex-col border-l border-trait bg-carte shadow-xl" role="dialog" aria-label="Valeur" data-testid="cell-drawer">
           <div className="flex items-center gap-2 border-b border-trait px-4 py-2">
