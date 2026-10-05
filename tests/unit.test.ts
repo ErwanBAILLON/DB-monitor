@@ -6,6 +6,8 @@ import { parseInfo } from "@/lib/drivers/redis";
 import { assertIdent } from "@/lib/drivers/postgres";
 import { parseSeed } from "@/lib/seed";
 import { bytes, duration } from "@/lib/format";
+import { LoginGuard, MAX_FAILURES, LOCK_MS, MAX_LOCK_MS, clientIp } from "@/lib/login-guard";
+import { assertAllowedTarget, isAllowedTarget, parseTargets } from "@/lib/targets";
 
 const KEY = "ab".repeat(32);
 
@@ -76,6 +78,29 @@ describe("read-only SQL guard", () => {
     ko("SELECT set_config('x', 'y', false)", /set_config/);
     ko("SELECT pg_read_file('/etc/passwd')", /pg_read_file/);
   });
+  it("rejects side-effect functions hidden in quoted identifiers (review finding)", () => {
+    ko('select "pg_terminate_backend"(123)', /guillemets/);
+    ko('select pg_catalog."pg_terminate_backend"(123)', /guillemets/);
+    ko('select "pg_sleep"(10)', /guillemets/);
+    ko('select "set_config"(\'role\', \'postgres\', false)', /guillemets/);
+    ko('select * from "pg_read_file"(\'/etc/passwd\')', /guillemets/);
+    ko('select "pg_catalog"."pg_terminate_backend" (1)', /guillemets/);
+    ko('SELECT U&"pg_terminate_backend"(1)', /U&/);
+    ko('SELECT U&"\\0070g_sleep"(1)', /U&/);
+    ko('SELECT "pg_sleep" FROM t', /Identifiant interdit/);
+    // Legit quoted identifiers that are not function calls stay allowed.
+    ok('SELECT "update" FROM "delete"');
+    ok('SELECT "weird name", "pid" FROM "my table" WHERE "x" = 1');
+  });
+  it("rejects more side-effect functions in clear", () => {
+    ko("select pg_notify('x','y')", /pg_notify/);
+    ko("select pg_stat_reset()", /pg_stat_reset/);
+    ko("select pg_stat_reset_shared('bgwriter')", /pg_stat_reset_shared/);
+    ko("select pg_log_backend_memory_contents(1)", /pg_log_backend_memory_contents/);
+    ko("select pg_catalog . pg_terminate_backend (1)", /pg_terminate_backend/);
+    ko("select lo_get(1)", /lo_get/);
+    ok("select pg_stat_get_activity(null) is null");
+  });
   it("rejects multiple statements, empty input and unterminated literals", () => {
     ko("SELECT 1; DELETE FROM t", /seule instruction/);
     ko("SELECT 1; SELECT 2", /seule instruction/);
@@ -141,5 +166,64 @@ describe("format", () => {
     expect(bytes(5n * 1024n * 1024n * 1024n)).toBe("5.0 Gio");
     expect(duration(59)).toBe("59 s");
     expect(duration(3 * 86400 + 3600)).toBe("3 j 1 h");
+  });
+});
+
+describe("login guard", () => {
+  it("locks after MAX_FAILURES, doubles the lock, resets on success", () => {
+    let t = 1_000_000;
+    const g = new LoginGuard(() => t);
+    for (let i = 1; i < MAX_FAILURES; i++) expect(g.fail("ip")).toBe(0);
+    expect(g.lockedFor("ip")).toBe(0);
+    expect(g.fail("ip")).toBe(LOCK_MS);
+    expect(g.lockedFor("ip")).toBe(LOCK_MS);
+    expect(g.lockedFor("other")).toBe(0);
+    t += LOCK_MS + 1;
+    expect(g.lockedFor("ip")).toBe(0);
+    for (let i = 1; i < MAX_FAILURES; i++) g.fail("ip");
+    expect(g.fail("ip")).toBe(LOCK_MS * 2);
+    g.succeed("ip");
+    expect(g.lockedFor("ip")).toBe(0);
+  });
+  it("caps the lock duration", () => {
+    let t = 0;
+    const g = new LoginGuard(() => t);
+    let applied = 0;
+    for (let round = 0; round < 12; round++) {
+      for (let i = 0; i < MAX_FAILURES; i++) applied = g.fail("ip") || applied;
+      t += applied + 1;
+    }
+    expect(applied).toBe(MAX_LOCK_MS);
+  });
+  it("takes the first X-Forwarded-For hop", () => {
+    expect(clientIp(new Headers({ "x-forwarded-for": "192.168.1.42, 10.0.0.1" }))).toBe("192.168.1.42");
+    expect(clientIp(new Headers({ "x-real-ip": "192.168.1.7" }))).toBe("192.168.1.7");
+    expect(clientIp(new Headers({ "x-forwarded-for": "<script>" }))).toBe("unknown");
+    expect(clientIp(undefined)).toBe("unknown");
+  });
+});
+
+describe("egress allowlist (DBMON_ALLOWED_TARGETS)", () => {
+  const spec = ".database.svc.cluster.local:5432,.projects.svc.cluster.local:5432/6379,db.lan,*:9999";
+  const t = parseTargets(spec);
+  it("parses entries with and without ports", () => {
+    expect(t).toHaveLength(4);
+    expect(t[1].ports).toEqual([5432, 6379]);
+    expect(t[2].ports).toEqual([]);
+  });
+  it("matches suffix + port, exact host, wildcard", () => {
+    expect(isAllowedTarget("shared-postgres-rw.database.svc.cluster.local", 5432, t)).toBe(true);
+    expect(isAllowedTarget("shared-postgres-rw.database.svc.cluster.local", 6379, t)).toBe(false);
+    expect(isAllowedTarget("sorago-redis.projects.svc.cluster.local", 6379, t)).toBe(true);
+    expect(isAllowedTarget("gitea-http.git.svc.cluster.local", 3000, t)).toBe(false);
+    expect(isAllowedTarget("192.168.1.1", 80, t)).toBe(false);
+    expect(isAllowedTarget("database.svc.cluster.local", 5432, t)).toBe(false);
+    expect(isAllowedTarget("DB.LAN", 3306, t)).toBe(true);
+    expect(isAllowedTarget("anything", 9999, t)).toBe(true);
+  });
+  it("allows everything when unset and throws otherwise", () => {
+    expect(isAllowedTarget("192.168.1.1", 80, [])).toBe(true);
+    expect(() => assertAllowedTarget("192.168.1.1", 80, spec)).toThrow(/hors de la liste/);
+    expect(() => assertAllowedTarget("x.database.svc.cluster.local", 5432, spec)).not.toThrow();
   });
 });

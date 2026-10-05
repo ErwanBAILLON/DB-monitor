@@ -21,7 +21,7 @@ const COMMON_TABS = [
   { key: "settings", label: "Paramètres" },
 ];
 
-export default async function InstancePage({ params, searchParams }: { params: { id: string }; searchParams: { tab?: string } }) {
+export default async function InstancePage({ params, searchParams }: { params: { id: string }; searchParams: { tab?: string; error?: string } }) {
   const inst = await prisma.instance.findUnique({ where: { id: params.id } });
   if (!inst) notFound();
   const tab = searchParams.tab ?? "overview";
@@ -163,6 +163,11 @@ export default async function InstancePage({ params, searchParams }: { params: {
           <div className="grid gap-4 lg:grid-cols-3">
             <div className="card lg:col-span-2">
               <h2 className="mb-3 text-sm font-medium text-gris">Connexion</h2>
+              {searchParams.error && (
+                <p className="mb-3 rounded border border-panne/40 bg-panne/10 px-3 py-2 text-sm text-panne" data-testid="form-error" role="alert">
+                  {searchParams.error}
+                </p>
+              )}
               <InstanceForm instance={inst} action={editInstance.bind(null, inst.id)} submitLabel="Enregistrer" />
             </div>
             <div className="space-y-4">

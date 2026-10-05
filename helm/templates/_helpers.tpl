@@ -58,3 +58,18 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Egress allowlist for the app (DBMON_ALLOWED_TARGETS), derived from networkPolicy.egress:
+".<ns>.svc.cluster.local:5432/6379,..." plus any extra entries in networkPolicy.extraTargets.
+*/}}
+{{- define "db-monitor.allowedTargets" -}}
+{{- $out := list -}}
+{{- range .Values.networkPolicy.egress -}}
+{{- $ports := list -}}
+{{- range .ports }}{{ $ports = append $ports (toString .) }}{{ end -}}
+{{- $out = append $out (printf ".%s.svc.cluster.local:%s" .namespace (join "/" $ports)) -}}
+{{- end -}}
+{{- range .Values.networkPolicy.extraTargets }}{{ $out = append $out . }}{{ end -}}
+{{- join "," $out -}}
+{{- end -}}

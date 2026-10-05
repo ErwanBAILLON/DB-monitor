@@ -57,6 +57,17 @@ async function shot(page, name) {
 
   let instanceUrl;
   if (!READONLY) {
+    // 3a. A host outside DBMON_ALLOWED_TARGETS is refused (the server sets 127.0.0.1 + cluster suffixes).
+    if (process.env.DENIED_HOST) {
+      await page.goto(`${BASE}/app/instances/new`);
+      const f0 = page.getByTestId("instance-form");
+      await f0.locator('[name="name"]').fill(`denied-${TAG}`);
+      await f0.locator('[name="host"]').fill(process.env.DENIED_HOST);
+      await f0.locator('[name="port"]').fill("80");
+      await f0.locator('button[type="submit"]').click();
+      await page.getByTestId("form-error").filter({ hasText: /hors de la liste autorisée/ }).waitFor();
+      log(`denied host refused: ${process.env.DENIED_HOST}:80`);
+    }
     // 3. Add the local Postgres instance (test connection first, then save).
     await page.goto(`${BASE}/app/instances/new`);
     await shot(page, "03-new");
@@ -131,6 +142,15 @@ async function shot(page, name) {
   await page.click('button:has-text("Exécuter")');
   await page.getByTestId("query-error").waitFor();
   log(`write refused: ${await page.getByTestId("query-error").innerText()}`);
+  // Side-effect function hidden in a quoted identifier (review finding) must be refused too.
+  await page.fill('textarea[name="sql"]', 'SELECT "pg_sleep"(0)');
+  await page.click('button:has-text("Exécuter")');
+  await page.getByTestId("query-error").filter({ hasText: /guillemets/ }).waitFor();
+  log(`quoted function refused: ${await page.getByTestId("query-error").innerText()}`);
+  await page.fill('textarea[name="sql"]', "SELECT pg_notify('x','y')");
+  await page.click('button:has-text("Exécuter")');
+  await page.getByTestId("query-error").filter({ hasText: /pg_notify/ }).waitFor();
+  log(`pg_notify refused: ${await page.getByTestId("query-error").innerText()}`);
 
   // 7. Create a database with owner (local only).
   const dbName = `e2e_${TAG}`;
@@ -193,6 +213,26 @@ async function shot(page, name) {
     if (await page.locator(`[data-testid="instance-card"][data-name="${INSTANCE}"]`).count()) fail("instance still listed after delete");
     log("instance deleted");
     console.log(`E2E_DB=${dbName}`);
+  }
+
+  // Optional: brute-force lockout (LOCKOUT=1). Locks this client IP for 15 min afterwards.
+  if (process.env.LOCKOUT === "1") {
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: !!RESOLVE });
+    const p2 = await ctx2.newPage();
+    for (let i = 0; i < 5; i++) {
+      await p2.goto(`${BASE}/login`);
+      await p2.fill('input[name="username"]', ADMIN.user);
+      await p2.fill('input[name="password"]', `wrong-${TAG}-${i}`);
+      await p2.click('button[type="submit"]');
+      await p2.getByText("Identifiants invalides").waitFor();
+    }
+    await p2.fill('input[name="username"]', ADMIN.user);
+    await p2.fill('input[name="password"]', ADMIN.pass);
+    await p2.click('button[type="submit"]');
+    await p2.getByText("Identifiants invalides").waitFor();
+    if (!/\/login/.test(p2.url())) fail("correct password accepted while locked out");
+    log("lockout active: correct password refused after 5 failures");
+    await ctx2.close();
   }
 
   // Unauthenticated API must be refused.

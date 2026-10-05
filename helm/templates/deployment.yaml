@@ -72,6 +72,11 @@ spec:
               value: "true"
             - name: APP_VERSION
               value: {{ .Values.image.tag | quote }}
+            {{- if .Values.networkPolicy.enabled }}
+            # flannel does not enforce NetworkPolicy: the app enforces the same egress list itself.
+            - name: DBMON_ALLOWED_TARGETS
+              value: {{ include "db-monitor.allowedTargets" . | quote }}
+            {{- end }}
           # Every key of the Vault entry becomes an env var, so optional settings
           # (SMTP, seed) can be added in Vault without a chart change.
           envFrom:

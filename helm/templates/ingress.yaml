@@ -10,12 +10,23 @@ spec:
   entryPoints:
     - websecure
   routes:
+    {{- if .Values.ingress.hardening.enabled }}
+    # Credentials callback: strict per-client-IP limit (brute force). Longer rule = higher priority.
+    - match: Host(`{{ .Values.ingress.host }}`) && Path(`/api/auth/callback/credentials`)
+      kind: Rule
+      middlewares:
+        - name: {{ $fullname }}-ratelimit-login
+        - name: security-headers
+          namespace: network
+      services:
+        - name: {{ $fullname }}
+          port: {{ .Values.service.port }}
+    {{- end }}
     - match: Host(`{{ .Values.ingress.host }}`)
       kind: Rule
       {{- if .Values.ingress.hardening.enabled }}
       middlewares:
-        - name: ratelimit-public
-          namespace: network
+        - name: {{ $fullname }}-ratelimit
         - name: security-headers
           namespace: network
       {{- end }}
@@ -58,4 +69,38 @@ spec:
   redirectScheme:
     scheme: https
     permanent: true
+{{- if .Values.ingress.hardening.enabled }}
+---
+# Per-client-IP rate limits. Traefik runs with hostNetwork, so RemoteAddr is the real LAN
+# client (ratelimit-public keys on CF-Connecting-IP, absent on this non-proxied host).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $fullname }}-ratelimit
+  labels:
+    {{- include "db-monitor.labels" . | nindent 4 }}
+spec:
+  rateLimit:
+    average: {{ .Values.ingress.hardening.rateLimit.average }}
+    burst: {{ .Values.ingress.hardening.rateLimit.burst }}
+    period: 1s
+    sourceCriterion:
+      ipStrategy:
+        depth: 0
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $fullname }}-ratelimit-login
+  labels:
+    {{- include "db-monitor.labels" . | nindent 4 }}
+spec:
+  rateLimit:
+    average: {{ .Values.ingress.hardening.loginRateLimit.average }}
+    burst: {{ .Values.ingress.hardening.loginRateLimit.burst }}
+    period: 1s
+    sourceCriterion:
+      ipStrategy:
+        depth: 0
+{{- end }}
 {{- end }}

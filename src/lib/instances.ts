@@ -5,6 +5,7 @@ import * as pg from "@/lib/drivers/postgres";
 import * as redis from "@/lib/drivers/redis";
 import * as mysql from "@/lib/drivers/mysql";
 import { ENGINES, type Conn, type EngineType, type Probe } from "@/lib/drivers/types";
+import { assertAllowedTarget } from "@/lib/targets";
 
 export function isEngine(s: unknown): s is EngineType {
   return typeof s === "string" && (ENGINES as string[]).includes(s);
@@ -57,6 +58,7 @@ export function parseInstanceForm(fd: FormData): InstanceInput {
   if (!/^[\w.-]{1,253}$/.test(host)) throw new Error("Hôte invalide.");
   const port = Number(str("port"));
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Port invalide.");
+  assertAllowedTarget(host, port);
   const password = fd.get("password");
   return {
     name,

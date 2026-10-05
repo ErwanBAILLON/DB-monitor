@@ -45,9 +45,17 @@ ingress:
   host: dbmon.ebaillon.fr
   tls: true
   certResolver: letsencrypt
-  # Shared Traefik middlewares (orgs/infra/traefik, cross-namespace).
+  # Shared Traefik middlewares (orgs/infra/traefik, cross-namespace) + a chart-local
+  # per-client-IP rate limit (ratelimit-public keys on CF-Connecting-IP, which this
+  # LAN-only host never carries) and a stricter one on the credentials callback.
   hardening:
     enabled: true
+    rateLimit:
+      average: 50
+      burst: 100
+    loginRateLimit:
+      average: 1   # requests per second per client IP on /api/auth/callback/credentials
+      burst: 5
 
 resources:
   limits:
@@ -101,6 +109,11 @@ startupProbe:
 strategy:
   type: Recreate
 
+# NOTE: the cluster CNI is flannel, which does NOT enforce NetworkPolicy. The policy
+# below is kept as declared intent (it becomes effective if the CNI changes); the
+# effective control is the application allowlist DBMON_ALLOWED_TARGETS, rendered from
+# this same list (helpers: db-monitor.allowedTargets) and checked on every instance
+# create / edit / test.
 networkPolicy:
   enabled: true
   # Databases the console may reach: namespace -> ports.
@@ -117,3 +130,5 @@ networkPolicy:
       ports: [6379]
     - namespace: git
       ports: [5432, 6379]
+  # Extra app-level targets outside the cluster DNS pattern, e.g. "db.lan:5432".
+  extraTargets: []

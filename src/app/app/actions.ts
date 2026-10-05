@@ -28,9 +28,19 @@ const safe = (i: { name: string; type: string; host: string; port: number; usern
 
 // --- registry ---------------------------------------------------------------
 
+// Form validation errors (incl. the egress allowlist) are shown on the form page:
+// a thrown error would only produce Next's generic error page in production.
+function parseOrRedirect(fd: FormData, back: string) {
+  try {
+    return parseInstanceForm(fd);
+  } catch (err) {
+    redirect(`${back}${back.includes("?") ? "&" : "?"}error=${encodeURIComponent(err instanceof Error ? err.message : String(err))}`);
+  }
+}
+
 export async function addInstance(fd: FormData): Promise<void> {
   const actor = await requireAdmin();
-  const input = parseInstanceForm(fd);
+  const input = parseOrRedirect(fd, "/app/instances/new");
   const inst = await audited({ actor, action: "instance.create", params: safe(input) }, () => createInstance(input));
   await checkInstance(inst.id).catch(() => undefined);
   revalidatePath("/app");
@@ -40,7 +50,7 @@ export async function addInstance(fd: FormData): Promise<void> {
 export async function editInstance(id: string, fd: FormData): Promise<void> {
   const actor = await requireAdmin();
   const inst = await instanceOr404(id);
-  const input = parseInstanceForm(fd);
+  const input = parseOrRedirect(fd, `/app/instances/${id}?tab=settings`);
   await audited({ actor, instance: inst, action: "instance.update", params: { ...safe(input), passwordChanged: input.password !== undefined } }, () => updateInstance(id, input));
   await checkInstance(id).catch(() => undefined);
   revalidatePath("/app");

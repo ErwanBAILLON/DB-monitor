@@ -8,7 +8,7 @@ engine): the goal is the same, "several kinds of databases, managed easily at
 the same time", now as a Kubernetes-deployed Next.js app that connects to the
 real instances over the network.
 
-- Prod: https://dbmon.ebaillon.fr (LAN only, single admin login)
+- Prod: https://dbmon.ebaillon.fr (LAN only, single admin login, 5 failed logins per client IP = 15 min lock, doubling)
 - Image: `git.ebaillon.fr/infra/db-monitor`, chart in `helm/`, ArgoCD app `db-monitor` (ns `projects`)
 
 ## What it does
@@ -61,6 +61,15 @@ GRANT CONNECT ON DATABASE <each> TO dbmon;   -- repeated for new databases
 A database created later needs `GRANT CONNECT ON DATABASE x TO dbmon` unless
 the app created it (it revokes PUBLIC, and the creating role keeps CONNECT).
 
+Blast radius: `dbmon` reads every table of every database it may connect to
+(29 in the homelab) and can create databases/roles. The console is therefore
+a full-read path to the cluster behind one admin password; mitigations are the
+per-IP login lock, the per-IP Traefik rate limits (chart middlewares
+`db-monitor-ratelimit` and `-ratelimit-login`), the 8 h session, the audit log
+and the LAN-only exposure. To shrink it: `ALTER ROLE dbmon NOCREATEDB
+NOCREATEROLE` (disables the create actions) and `REVOKE CONNECT ON DATABASE x
+FROM dbmon` for databases that must stay out of the console.
+
 **Redis**: no ACL needed for `PING`, `INFO`, `SCAN`, `TYPE`, `PTTL`, `DEL`;
 `CONFIG GET maxclients`, `CLIENT LIST` and `SLOWLOG GET` are optional (the UI
 degrades when they are renamed/disabled). Password per instance when
@@ -75,8 +84,14 @@ threads.
 `src/lib/sqlguard.ts` accepts a single `SELECT`/`WITH`/`EXPLAIN`/`SHOW`/`VALUES`
 statement, rejects DML/DDL keywords anywhere (data-modifying CTEs, `EXPLAIN
 ANALYZE DELETE`, `SELECT INTO`, `FOR UPDATE`), side-effect functions
-(`pg_terminate_backend`, `pg_sleep`, `setval`, `pg_read_file`, ...) and multiple
-statements. The driver then runs the statement in `BEGIN READ ONLY` with
+(`pg_terminate_backend`, `pg_sleep`, `setval`, `pg_read_file`, `pg_notify`,
+`pg_stat_reset*`, ...), multiple statements, and any function call through a
+quoted identifier (`"pg_sleep"(1)`, `pg_catalog."pg_terminate_backend"(1)`) or
+`U&"..."` identifier, since quoting would otherwise hide the name from the
+denylist. It is a denylist: a side-effect function not listed and called
+unquoted still passes, and `dbmon` keeps `pg_signal_backend` for the explicit
+terminate action, so the guard is the only thing standing between the console
+and `pg_terminate_backend`. The driver then runs the statement in `BEGIN READ ONLY` with
 `statement_timeout = 5 s` and caps the result at 500 rows. Both layers are
 tested (`tests/unit.test.ts`, `tests/integration/postgres.test.ts`).
 
@@ -92,9 +107,14 @@ tested (`tests/unit.test.ts`, `tests/integration/postgres.test.ts`).
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`, `ALERT_EMAIL` | no | alert e-mails (without SMTP, alerts are UI + `/api/alerts` only) |
 | `CHECKER_DISABLED` | no | `true` to stop the in-process checker |
 
-Network: the pod's NetworkPolicy allows egress only to the namespaces/ports
-listed in `helm/values.yaml` (`networkPolicy.egress`). Add a line there to
-monitor a database in another namespace.
+Network: the cluster CNI is flannel, which does **not** enforce
+NetworkPolicy, so the chart's policy (`helm/templates/networkpolicy.yaml`) is
+declared intent only. The effective control is in the application: the chart
+renders the same `networkPolicy.egress` list into `DBMON_ALLOWED_TARGETS`
+(`.<ns>.svc.cluster.local:<ports>,...`, plus `networkPolicy.extraTargets`) and
+`src/lib/targets.ts` refuses any instance whose host:port is outside it on
+create, edit and test. Add a line to `networkPolicy.egress` to monitor a
+database in another namespace. Unset variable = everything allowed (local dev).
 
 ## Development
 
@@ -116,6 +136,9 @@ Deploy: push to `main` -> Gitea Actions builds and pushes the image, bumps
 ## Limits
 
 - Single pod, single admin, no RBAC: it is a homelab console on the LAN.
+- The login lock is in-memory (lost on pod restart) and keyed by client IP
+  (`X-Forwarded-For` first hop, set by Traefik in hostNetwork).
+- NetworkPolicy is not enforced by flannel; see "Network" above.
 - TLS to databases is accepted without CA verification (internal CNPG CA);
   pin the CA before using it outside the cluster.
 - MySQL driver untested against a live server; MongoDB and SQLite not implemented.

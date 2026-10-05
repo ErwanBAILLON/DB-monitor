@@ -4,10 +4,15 @@ import { addInstance, testConnection } from "@/app/app/actions";
 
 export const metadata = { title: "Nouvelle instance" };
 
-export default function NewInstancePage() {
+export default function NewInstancePage({ searchParams }: { searchParams: { error?: string } }) {
   return (
     <>
       <h1 className="text-2xl font-semibold tracking-tight">Nouvelle instance</h1>
+      {searchParams.error && (
+        <p className="mt-3 rounded border border-panne/40 bg-panne/10 px-3 py-2 text-sm text-panne" data-testid="form-error" role="alert">
+          {searchParams.error}
+        </p>
+      )}
       <p className="mt-1 text-sm text-gris">Le mot de passe est chiffré (AES-256-GCM) avant stockage. Testez la connexion avant d&apos;enregistrer.</p>
       <div className="card mt-5">
         <InstanceForm action={addInstance} submitLabel="Enregistrer" />
