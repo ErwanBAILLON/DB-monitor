@@ -200,6 +200,50 @@ Audit actions: `explore.describe`, `explore.browse`, `explore.profile`,
   In prod the registered instance `sample-sqlite` (`/data/sqlite/sample.db`,
   written at pod start) is the one shown in the Explorer tab.
 
+### MinIO / S3 (`s3`)
+
+- Containers: buckets (`ListBuckets`) with object count and bytes from the
+  first 1 000 keys (`capped: ">= 1000 objets"` beyond), region
+  (`GetBucketLocation`), versioning, creation date.
+- Objects: a synthetic `/` entry (whole bucket, recursive), the first-level
+  prefixes of a delimited `ListObjectsV2` (`kind: prefix`, count/bytes/last
+  modified from one 1 000-key page each, at most 100 prefixes counted) and the
+  objects sitting at the bucket root (`kind: object`, at most 200 shown).
+- Structure: the five listing fields (`key`, `size`, `last_modified`, `etag`,
+  `storage_class`) presented as columns, no indexes or constraints (object
+  store), storage = object count, bytes, last modified, storage classes on a
+  recursive scan capped at 5 000 keys, one sample entry. A single object adds
+  `HeadObject` metadata (content type, encoding, version id, user metadata
+  count, SSE) and the first 4 KiB of text-typed objects as `preview`. With a
+  list-only key (403 on HEAD, the case of the homelab read-only key) the
+  structure falls back to the listing entry and says so in the notes.
+- Données: no query language, so the explorer scans at most 5 000 keys under
+  the prefix (`ListObjectsV2`, 1 000 per page) and applies filters, sort and
+  paging in memory; values typed in filters are compared, never interpolated.
+  `key = x` and `key like 'x%'` (prefix only) narrow the server-side `Prefix`.
+  `size` compares numerically, the others lexically (ISO dates sort
+  correctly). Total is exact under the cap, a lower bound flagged
+  `totalIsEstimate` above it. Columns outside the five listing fields (`id;
+  DROP`, `1=1`, `preview`) are refused; keys with control characters, `..`,
+  `//`, a leading `/` or more than 1 024 bytes are refused.
+- Profil: on the listing sample (<= 10 000 keys): null %, distinct, min/max,
+  top 10 for any of the five fields. `{unsupported}` on a single object.
+- Statistiques: without container, server header + per-bucket table; per
+  bucket: totals, volume per first-level prefix (top 50), extension breakdown
+  (top 30), storage classes, 20 largest objects, 20 most recent, hygiene
+  (empty objects, multipart etags, delimiter markers). All on the 5 000-key
+  scan (noted when capped).
+- Deliberately not shown: object contents beyond a 4 KiB preview of text
+  types (`text/*`, JSON, XML, YAML, CSV, SVG...), binaries are never fetched;
+  object ACLs, tags and lifecycle rules (extra calls per object, not exposed
+  by a list-only key); object versions (`ListObjectVersions`) and delete
+  markers. Nothing is ever written: the driver only uses ListBuckets,
+  ListObjectsV2, GetBucketLocation, GetBucketVersioning, HeadObject and a
+  ranged GetObject.
+- Tested against the homelab MinIO
+  `quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z` (ns `storage`, list-only
+  key) by `tests/integration/s3.explore.test.ts` (`TEST_S3_URL`).
+
 ### Template for the other engines
 
 ```
