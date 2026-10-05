@@ -20,6 +20,9 @@ function clientFor(c: Conn): Redis {
 
 export async function withRedis<T>(c: Conn, fn: (r: Redis) => Promise<T>): Promise<T> {
   const r = clientFor(c);
+  // ioredis emits 'error' as an event as well as rejecting connect(); without a
+  // listener Node logs "Unhandled error event" on every down instance.
+  r.on("error", () => undefined);
   await r.connect();
   try {
     return await fn(r);

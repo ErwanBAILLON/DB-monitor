@@ -158,11 +158,20 @@ async function shot(page, name) {
     }
   }
 
+  // 7b. Prod: pg_dump of a small database through the authenticated session (read-only on the server).
+  if (READONLY && process.env.DUMP_DB) {
+    const res = await page.request.get(`${instanceUrl.replace("/app/instances/", "/api/instances/")}/dump?db=${process.env.DUMP_DB}`);
+    if (!res.ok()) fail(`dump ${res.status()}`);
+    const body = await res.body();
+    if (body.length < 100 || body[0] !== 0x1f || body[1] !== 0x8b) fail(`dump not gzip (${body.length} b)`);
+    log(`dump of ${process.env.DUMP_DB}: ${body.length} b gzip`);
+  }
+
   // 8. Audit shows the rows.
   await page.goto(`${BASE}/app/audit`);
   await page.getByTestId("audit-table").waitFor();
   const actions = await page.locator("tbody tr").evaluateAll((trs) => trs.map((t) => t.getAttribute("data-action")));
-  for (const a of ["instance.test", "query.readonly", ...(READONLY ? [] : ["instance.create", "pg.create_database", ...(process.env.SKIP_DUMP === "1" ? [] : ["pg_dump"])])]) {
+  for (const a of ["instance.test", "query.readonly", ...(READONLY && process.env.DUMP_DB ? ["pg_dump"] : []), ...(READONLY ? [] : ["instance.create", "pg.create_database", ...(process.env.SKIP_DUMP === "1" ? [] : ["pg_dump"])])]) {
     if (!actions.includes(a)) fail(`audit missing ${a} (have ${actions.slice(0, 10).join(",")})`);
   }
   log(`audit ok (${actions.length} rows on page)`);
