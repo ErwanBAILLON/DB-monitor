@@ -53,7 +53,8 @@ export function neoValue(v: unknown): unknown {
 export async function readQuery(d: Driver, cypher: string, params: Record<string, unknown> = {}, opts: { database?: string; timeoutMs?: number; max?: number } = {}): Promise<Row[]> {
   const session = d.session({ defaultAccessMode: neo4j.session.READ, database: opts.database || "neo4j" });
   try {
-    const tx = await session.beginTransaction({ timeout: opts.timeoutMs ?? PROBE_TIMEOUT_MS });
+    // Tagged so that the transactions tab can hide the console's own parallel reads.
+    const tx = await session.beginTransaction({ timeout: opts.timeoutMs ?? PROBE_TIMEOUT_MS, metadata: { app: "db-monitor" } });
     try {
       const res = await tx.run(cypher, params);
       const rows = res.records.slice(0, opts.max ?? Infinity).map(recordRow);
@@ -145,7 +146,7 @@ export async function detail(c: Conn): Promise<NeoDetail> {
     const [components, databases, transactions, indexes, constraints, connections, labels, relTypes, nodes, rels] = await Promise.all([
       sys(d, "CALL dbms.components() YIELD name, versions, edition RETURN name, versions, edition"),
       sys(d, "SHOW DATABASES YIELD name, type, aliases, access, address, role, currentStatus, statusMessage, default, home RETURN *"),
-      sys(d, "SHOW TRANSACTIONS YIELD transactionId, database, username, currentQuery, status, elapsedTime, startTime, clientAddress, currentQueryAllocatedBytes, pageHits, pageFaults RETURN *"),
+      sys(d, "SHOW TRANSACTIONS YIELD transactionId, database, username, currentQuery, status, elapsedTime, startTime, clientAddress, currentQueryAllocatedBytes, pageHits, pageFaults, metaData WHERE metaData.app IS NULL OR metaData.app <> 'db-monitor' RETURN transactionId, database, username, currentQuery, status, elapsedTime, startTime, clientAddress, currentQueryAllocatedBytes, pageHits, pageFaults"),
       readQuery(d, "SHOW INDEXES YIELD name, type, entityType, labelsOrTypes, properties, state, populationPercent, owningConstraint RETURN *", {}, { database: db }),
       readQuery(d, "SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties RETURN *", {}, { database: db }),
       tryRows(sys(d, "CALL dbms.listConnections() YIELD connectionId, connectTime, connector, username, userAgent, serverAddress, clientAddress RETURN *")),
