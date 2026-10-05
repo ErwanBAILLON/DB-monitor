@@ -4,7 +4,13 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import * as pg from "@/lib/drivers/postgres";
 import * as redis from "@/lib/drivers/redis";
 import * as mysql from "@/lib/drivers/mysql";
-import { ENGINES, type Conn, type EngineType, type Probe } from "@/lib/drivers/types";
+import * as mongodb from "@/lib/drivers/mongodb";
+import * as clickhouse from "@/lib/drivers/clickhouse";
+import * as crdb from "@/lib/drivers/cockroach";
+import * as opensearch from "@/lib/drivers/opensearch";
+import * as mssql from "@/lib/drivers/mssql";
+import * as sqlite from "@/lib/drivers/sqlite";
+import { DEFAULT_PORT, ENGINES, type Conn, type EngineType, type Probe } from "@/lib/drivers/types";
 import { assertAllowedTarget } from "@/lib/targets";
 
 export function isEngine(s: unknown): s is EngineType {
@@ -28,12 +34,26 @@ export function probe(c: Conn): Promise<Probe> {
   switch (c.type) {
     case "postgres":
       return pg.probe(c);
+    case "cockroach":
+      return crdb.probe(c);
     case "redis":
       return redis.probe(c);
     case "mysql":
       return mysql.probe(c);
+    case "mongodb":
+      return mongodb.probe(c);
+    case "clickhouse":
+      return clickhouse.probe(c);
+    case "opensearch":
+      return opensearch.probe(c);
+    case "mssql":
+      return mssql.probe(c);
+    case "sqlite":
+      return sqlite.probe(c);
   }
 }
+
+export const defaultPort = (type: EngineType) => DEFAULT_PORT[type];
 
 export type InstanceInput = {
   name: string;
@@ -54,11 +74,18 @@ export function parseInstanceForm(fd: FormData): InstanceInput {
   if (!isEngine(type)) throw new Error("Type de moteur inconnu.");
   const name = str("name");
   if (!/^[\w.-]{2,64}$/.test(name)) throw new Error("Nom : 2 à 64 caractères (lettres, chiffres, . _ -).");
-  const host = str("host");
-  if (!/^[\w.-]{1,253}$/.test(host)) throw new Error("Hôte invalide.");
-  const port = Number(str("port"));
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Port invalide.");
-  assertAllowedTarget(host, port);
+  let host = str("host");
+  let port = Number(str("port"));
+  if (type === "sqlite") {
+    // A local file: no network target. The path is checked against DBMON_SQLITE_ROOTS.
+    host = "localhost";
+    port = 0;
+    sqlite.resolvePath(str("database"));
+  } else {
+    if (!/^[\w.-]{1,253}$/.test(host)) throw new Error("Hôte invalide.");
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Port invalide.");
+    assertAllowedTarget(host, port);
+  }
   const password = fd.get("password");
   return {
     name,

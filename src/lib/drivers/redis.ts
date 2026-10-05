@@ -22,8 +22,14 @@ export async function withRedis<T>(c: Conn, fn: (r: Redis) => Promise<T>): Promi
   const r = clientFor(c);
   // ioredis emits 'error' as an event as well as rejecting connect(); without a
   // listener Node logs "Unhandled error event" on every down instance.
-  r.on("error", () => undefined);
-  await r.connect();
+  // The first error (e.g. WRONGPASS) is more telling than connect()'s "Connection is closed".
+  let firstError: Error | undefined;
+  r.on("error", (e: Error) => (firstError ??= e));
+  try {
+    await r.connect();
+  } catch (err) {
+    throw firstError ?? err;
+  }
   try {
     return await fn(r);
   } finally {
@@ -48,6 +54,21 @@ export function parseInfo(text: string): Record<string, Record<string, string>> 
   return out;
 }
 
+// Redis-compatible servers advertise themselves differently in INFO server:
+// Valkey adds valkey_version (+ server_name), Dragonfly dragonfly_version, KeyDB
+// keydb_version; redis_version stays as the compatibility level.
+export function flavourOf(server: Record<string, string>): { flavour: string; version: string } {
+  if (server.valkey_version) return { flavour: "valkey", version: server.valkey_version };
+  if (server.dragonfly_version) return { flavour: "dragonfly", version: server.dragonfly_version.replace(/^df-/, "") };
+  if (server.keydb_version) return { flavour: "keydb", version: server.keydb_version };
+  if (server.server_name && server.server_name !== "redis") return { flavour: server.server_name, version: server.redis_version ?? "" };
+  return { flavour: "redis", version: server.redis_version ?? "" };
+}
+export const versionLabel = (server: Record<string, string>) => {
+  const f = flavourOf(server);
+  return f.flavour === "redis" ? f.version : `${f.flavour} ${f.version}`;
+};
+
 export async function probe(c: Conn): Promise<Probe> {
   const t0 = Date.now();
   try {
@@ -70,7 +91,7 @@ export async function probe(c: Conn): Promise<Probe> {
         return {
           up: true,
           latencyMs,
-          version: server.redis_version,
+          version: versionLabel(server),
           uptimeSec: server.uptime_in_seconds ? Number(server.uptime_in_seconds) : undefined,
           connUsed: clients.connected_clients ? Number(clients.connected_clients) : undefined,
           connMax,

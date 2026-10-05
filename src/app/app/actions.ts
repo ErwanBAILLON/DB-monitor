@@ -12,6 +12,12 @@ import { generatePassword } from "@/lib/crypto";
 import * as pg from "@/lib/drivers/postgres";
 import * as redis from "@/lib/drivers/redis";
 import * as mysql from "@/lib/drivers/mysql";
+import * as mongodb from "@/lib/drivers/mongodb";
+import * as clickhouse from "@/lib/drivers/clickhouse";
+import * as crdb from "@/lib/drivers/cockroach";
+import * as opensearch from "@/lib/drivers/opensearch";
+import * as mssql from "@/lib/drivers/mssql";
+import * as sqlite from "@/lib/drivers/sqlite";
 import type { QueryResult } from "@/lib/drivers/types";
 import type { Prisma } from "@prisma/client";
 
@@ -168,8 +174,18 @@ export async function runReadOnlyQuery(id: string, fd: FormData): Promise<{ ok: 
     const inst = await instanceOr404(id);
     const sql = String(fd.get("sql") ?? "");
     const database = String(fd.get("database") ?? "").trim() || undefined;
-    const run = inst.type === "postgres" ? pg.readOnlyQuery : inst.type === "mysql" ? mysql.readOnlyQuery : null;
-    if (!run) throw new Error("Pas de requête SQL sur ce moteur.");
+    const RUNNERS: Record<string, (c: ReturnType<typeof connOf>, q: string, db?: string) => Promise<QueryResult>> = {
+      postgres: pg.readOnlyQuery,
+      cockroach: crdb.readOnlyQuery,
+      mysql: mysql.readOnlyQuery,
+      mongodb: mongodb.readOnlyQuery,
+      clickhouse: clickhouse.readOnlyQuery,
+      mssql: mssql.readOnlyQuery,
+      sqlite: (c, q) => sqlite.readOnlyQuery(c, q),
+      opensearch: (c, q, db) => opensearch.search(c, db ?? "", q),
+    };
+    const run = RUNNERS[inst.type];
+    if (!run) throw new Error("Pas de console de requête sur ce moteur.");
     const result = await audited({ actor, instance: inst, action: "query.readonly", params: { database: database ?? null, sql: sql.slice(0, 2000) } }, () => run(connOf(inst), sql, database), (r) => `${r.rowCount} rows in ${r.durationMs} ms`);
     return { ok: true, result };
   } catch (err) {
@@ -188,6 +204,157 @@ export async function myKill(fd: FormData): Promise<Result> {
     await audited({ actor, instance: inst, action: "mysql.kill", params: { id: pid } }, () => mysql.killProcess(connOf(inst), pid));
     revalidatePath(`/app/instances/${inst.id}`);
     return { ok: true, message: `Processus ${pid} tué.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function myCreateDatabase(fd: FormData): Promise<Result> {
+  try {
+    const actor = await requireAdmin();
+    const inst = await instanceOr404(String(fd.get("id")));
+    const name = String(fd.get("name") ?? "").trim();
+    const user = String(fd.get("user") ?? "").trim() || undefined;
+    const password = user ? generatePassword() : undefined;
+    await audited({ actor, instance: inst, action: "mysql.create_database", params: { name, user: user ?? null } }, () => mysql.createDatabase(connOf(inst), name, user, password));
+    revalidatePath(`/app/instances/${inst.id}`);
+    const url = password ? `\nURL : mysql://${user}:${password}@${inst.host}:${inst.port}/${name}\n(Mot de passe affiché une seule fois, non journalisé.)` : "";
+    return { ok: true, message: `Base ${name} créée${user ? ` (utilisateur ${user}, ALL PRIVILEGES sur cette base)` : ""}.${url}` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// --- mongodb -------------------------------------------------------------------
+
+export async function mongoKillOp(fd: FormData): Promise<Result> {
+  try {
+    const actor = await requireAdmin();
+    const inst = await instanceOr404(String(fd.get("id")));
+    const opid = String(fd.get("opid") ?? "").trim();
+    if (!/^[\w:-]{1,64}$/.test(opid)) throw new Error("opid invalide.");
+    await audited({ actor, instance: inst, action: "mongodb.kill_op", params: { opid } }, () => mongodb.killOp(connOf(inst), opid));
+    revalidatePath(`/app/instances/${inst.id}`);
+    return { ok: true, message: `killOp ${opid} envoyé.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function mongoCreateDatabase(fd: FormData): Promise<Result> {
+  try {
+    const actor = await requireAdmin();
+    const inst = await instanceOr404(String(fd.get("id")));
+    const name = String(fd.get("name") ?? "").trim();
+    const user = String(fd.get("user") ?? "").trim() || undefined;
+    const password = user ? generatePassword() : undefined;
+    await audited({ actor, instance: inst, action: "mongodb.create_database", params: { name, user: user ?? null } }, () => mongodb.createDatabase(connOf(inst), name, user, password));
+    revalidatePath(`/app/instances/${inst.id}`);
+    const url = password ? `\nURL : mongodb://${user}:${password}@${inst.host}:${inst.port}/${name}?authSource=${name}\n(Mot de passe affiché une seule fois, non journalisé.)` : "";
+    return { ok: true, message: `Base ${name} créée${user ? ` (utilisateur ${user}, readWrite)` : ""}.${url}` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// --- cockroach -----------------------------------------------------------------
+
+export async function crdbCancelSession(fd: FormData): Promise<Result> {
+  try {
+    const actor = await requireAdmin();
+    const inst = await instanceOr404(String(fd.get("id")));
+    const sessionId = String(fd.get("sessionId") ?? "").trim();
+    await audited({ actor, instance: inst, action: "cockroach.cancel_session", params: { sessionId } }, () => crdb.cancelSession(connOf(inst), sessionId));
+    revalidatePath(`/app/instances/${inst.id}`);
+    return { ok: true, message: `Session ${sessionId.slice(0, 8)}… annulée.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function crdbCreateDatabase(fd: FormData): Promise<Result> {
+  try {
+    const actor = await requireAdmin();
+    const inst = await instanceOr404(String(fd.get("id")));
+    const name = String(fd.get("name") ?? "").trim();
+    const owner = String(fd.get("owner") ?? "").trim() || undefined;
+    await audited({ actor, instance: inst, action: "cockroach.create_database", params: { name, owner: owner ?? null } }, () => crdb.createDatabase(connOf(inst), name, owner));
+    revalidatePath(`/app/instances/${inst.id}`);
+    return { ok: true, message: `Base ${name} créée${owner ? ` (propriétaire ${owner})` : ""}.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function crdbCreateRole(fd: FormData): Promise<Result> {
+  try {
+    const actor = await requireAdmin();
+    const inst = await instanceOr404(String(fd.get("id")));
+    const name = String(fd.get("name") ?? "").trim();
+    const withPassword = fd.get("withPassword") === "on";
+    const password = withPassword ? generatePassword() : undefined;
+    await audited({ actor, instance: inst, action: "cockroach.create_role", params: { name, withPassword } }, () => crdb.createRole(connOf(inst), name, password));
+    revalidatePath(`/app/instances/${inst.id}`);
+    return { ok: true, message: `Rôle ${name} créé.${password ? `\nMot de passe : ${password}\n(Affiché une seule fois, non journalisé.)` : " Sans mot de passe (nœud insecure ou authentification par certificat)."}` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// --- clickhouse ----------------------------------------------------------------
+
+export async function chKillQuery(fd: FormData): Promise<Result> {
+  try {
+    const actor = await requireAdmin();
+    const inst = await instanceOr404(String(fd.get("id")));
+    const queryId = String(fd.get("queryId") ?? "").trim();
+    const r = await audited({ actor, instance: inst, action: "clickhouse.kill_query", params: { queryId } }, () => clickhouse.killQuery(connOf(inst), queryId), (r) => r);
+    revalidatePath(`/app/instances/${inst.id}`);
+    return { ok: true, message: `KILL QUERY ${queryId} : ${r}.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// --- mssql ---------------------------------------------------------------------
+
+export async function msKill(fd: FormData): Promise<Result> {
+  try {
+    const actor = await requireAdmin();
+    const inst = await instanceOr404(String(fd.get("id")));
+    const sessionId = Number(fd.get("sessionId"));
+    await audited({ actor, instance: inst, action: "mssql.kill", params: { sessionId } }, () => mssql.killSession(connOf(inst), sessionId));
+    revalidatePath(`/app/instances/${inst.id}`);
+    return { ok: true, message: `Session ${sessionId} tuée.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function msCreateDatabase(fd: FormData): Promise<Result> {
+  try {
+    const actor = await requireAdmin();
+    const inst = await instanceOr404(String(fd.get("id")));
+    const name = String(fd.get("name") ?? "").trim();
+    const login = String(fd.get("login") ?? "").trim() || undefined;
+    const password = login ? generatePassword() + "aA1!" : undefined;
+    await audited({ actor, instance: inst, action: "mssql.create_database", params: { name, login: login ?? null } }, () => mssql.createDatabase(connOf(inst), name, login, password));
+    revalidatePath(`/app/instances/${inst.id}`);
+    const url = password ? `\nLogin : ${login}\nMot de passe : ${password}\n(Affiché une seule fois, non journalisé.)` : "";
+    return { ok: true, message: `Base ${name} créée${login ? ` (login ${login}, db_owner)` : ""}.${url}` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// --- sqlite --------------------------------------------------------------------
+
+export async function sqliteIntegrity(fd: FormData): Promise<Result> {
+  try {
+    const actor = await requireAdmin();
+    const inst = await instanceOr404(String(fd.get("id")));
+    const rows = await audited({ actor, instance: inst, action: "sqlite.integrity_check" }, () => sqlite.integrityCheck(connOf(inst)), (r) => r.map((x) => Object.values(x)[0]).join("; ").slice(0, 500));
+    return { ok: true, message: rows.map((x) => String(Object.values(x)[0])).join("\n") };
   } catch (err) {
     return fail(err);
   }

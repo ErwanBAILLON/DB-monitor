@@ -31,7 +31,7 @@ function stripIdentifiers(sql: string): string {
     .replace(/`[^`]*`/g, " `` "); // mysql identifiers
 }
 
-export function guardReadOnly(input: string): GuardResult {
+export function guardReadOnly(input: string, opts: { allowFirst?: string[] } = {}): GuardResult {
   const raw = input.trim().replace(/;\s*$/, "");
   if (!raw) return { ok: false, reason: "Requête vide." };
   if (raw.length > 20_000) return { ok: false, reason: "Requête trop longue." };
@@ -48,7 +48,7 @@ export function guardReadOnly(input: string): GuardResult {
   if (stripped.includes("/*") || /'(?!')/.test(stripped.replace(/''/g, ""))) return { ok: false, reason: "Littéral non terminé." };
   if (stripped.includes(";")) return { ok: false, reason: "Une seule instruction autorisée." };
   const first = stripped.match(/^\s*\(*\s*([A-Za-z]+)/)?.[1]?.toLowerCase();
-  if (!first || !ALLOWED_FIRST.has(first)) return { ok: false, reason: "Seules les requêtes SELECT / WITH / EXPLAIN / SHOW sont autorisées." };
+  if (!first || !(ALLOWED_FIRST.has(first) || opts.allowFirst?.includes(first))) return { ok: false, reason: "Seules les requêtes SELECT / WITH / EXPLAIN / SHOW sont autorisées." };
   // Everything after the first keyword: no DML/DDL anywhere (covers data-modifying CTEs,
   // `EXPLAIN ANALYZE DELETE`, `SELECT ... INTO`, `FOR UPDATE`).
   const body = stripped.replace(/^\s*\(*\s*[A-Za-z]+/, "");

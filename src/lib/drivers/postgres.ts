@@ -1,5 +1,6 @@
 import { Client } from "pg";
 import { guardReadOnly } from "@/lib/sqlguard";
+import * as crdb from "./cockroach";
 import { MAX_ROWS, PROBE_TIMEOUT_MS, QUERY_TIMEOUT_MS, errorMessage, plainRow, withTimeout, type Conn, type Probe, type QueryResult, type Row } from "./types";
 
 // pg returns int8/numeric as strings; keep that (exact) and convert where we need numbers.
@@ -34,11 +35,15 @@ export async function withPg<T>(c: Conn, fn: (client: Client) => Promise<T>, dat
 const n = (v: unknown) => (v === null || v === undefined ? undefined : Number(v));
 
 export async function probe(c: Conn): Promise<Probe> {
+  if (c.type === "cockroach") return crdb.probe(c);
   const t0 = Date.now();
   try {
     return await withTimeout(
       withPg(c, async (client) => {
         const latencyMs = Date.now() - t0;
+        // A "postgres" instance that is really CockroachDB: delegate (no pg_postmaster_start_time there).
+        const v = await client.query("SELECT version() AS v");
+        if (crdb.isCockroachVersion(String(v.rows[0]?.v))) throw new CockroachDetected();
         const r = await client.query(`
           SELECT current_setting('server_version') AS version,
                  extract(epoch from now() - pg_postmaster_start_time())::bigint AS uptime,
@@ -62,9 +67,11 @@ export async function probe(c: Conn): Promise<Probe> {
       "probe",
     );
   } catch (err) {
+    if (err instanceof CockroachDetected) return crdb.probe({ ...c, type: "cockroach" });
     return { up: false, latencyMs: Date.now() - t0, error: errorMessage(err) };
   }
 }
+class CockroachDetected extends Error {}
 
 export type PgDetail = {
   databases: Row[];

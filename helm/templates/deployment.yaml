@@ -79,6 +79,14 @@ spec:
             {{- end }}
           # Every key of the Vault entry becomes an env var, so optional settings
           # (SMTP, seed) can be added in Vault without a chart change.
+            {{- if or .Values.sqlite.sample .Values.sqlite.mounts }}
+            - name: DBMON_SQLITE_ROOTS
+              value: {{ include "db-monitor.sqliteRoots" . | quote }}
+            {{- end }}
+            {{- if .Values.sqlite.sample }}
+            - name: DBMON_SQLITE_SAMPLE
+              value: {{ .Values.sqlite.samplePath | quote }}
+            {{- end }}
           envFrom:
             - secretRef:
                 name: {{ include "db-monitor.fullname" . }}-secrets
@@ -101,6 +109,15 @@ spec:
               mountPath: /tmp
             - name: nextjs-cache
               mountPath: /app/.next/cache
+            {{- if .Values.sqlite.sample }}
+            - name: sqlite-sample
+              mountPath: {{ dir .Values.sqlite.samplePath }}
+            {{- end }}
+            {{- range .Values.sqlite.mounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir:
@@ -108,6 +125,23 @@ spec:
         - name: nextjs-cache
           emptyDir:
             sizeLimit: 200Mi
+        {{- if .Values.sqlite.sample }}
+        - name: sqlite-sample
+          emptyDir:
+            sizeLimit: 50Mi
+        {{- end }}
+        {{- range .Values.sqlite.mounts }}
+        - name: {{ .name }}
+          {{- if .persistentVolumeClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .persistentVolumeClaim }}
+            readOnly: true
+          {{- else }}
+          hostPath:
+            path: {{ .hostPath }}
+            type: Directory
+          {{- end }}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

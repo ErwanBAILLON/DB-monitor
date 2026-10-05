@@ -73,3 +73,11 @@ Egress allowlist for the app (DBMON_ALLOWED_TARGETS), derived from networkPolicy
 {{- range .Values.networkPolicy.extraTargets }}{{ $out = append $out . }}{{ end -}}
 {{- join "," $out -}}
 {{- end -}}
+
+{{/* Directories the SQLite driver may open (DBMON_SQLITE_ROOTS). */}}
+{{- define "db-monitor.sqliteRoots" -}}
+{{- $out := list -}}
+{{- if .Values.sqlite.sample }}{{ $out = append $out (dir .Values.sqlite.samplePath) }}{{ end -}}
+{{- range .Values.sqlite.mounts }}{{ $out = append $out .mountPath }}{{ end -}}
+{{- join "," $out -}}
+{{- end -}}

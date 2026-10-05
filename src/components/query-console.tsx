@@ -4,7 +4,21 @@ import { useState, useTransition } from "react";
 import type { QueryResult } from "@/lib/drivers/types";
 import { DataTable } from "./data-table";
 
-export function QueryConsole({ run, databases, defaultDb }: { run: (fd: FormData) => Promise<{ ok: true; result: QueryResult } | { ok: false; message: string }>; databases?: string[]; defaultDb?: string }) {
+export function QueryConsole({
+  run,
+  databases,
+  defaultDb,
+  hint = "SELECT / WITH / EXPLAIN / SHOW uniquement, une instruction, transaction READ ONLY, 5 s max, 500 lignes.",
+  placeholder = "SELECT now()",
+  rows = 5,
+}: {
+  run: (fd: FormData) => Promise<{ ok: true; result: QueryResult } | { ok: false; message: string }>;
+  databases?: string[];
+  defaultDb?: string;
+  hint?: string;
+  placeholder?: string;
+  rows?: number;
+}) {
   const [out, setOut] = useState<Awaited<ReturnType<typeof run>> | null>(null);
   const [pending, start] = useTransition();
   return (
@@ -27,9 +41,9 @@ export function QueryConsole({ run, databases, defaultDb }: { run: (fd: FormData
             </select>
           </label>
         )}
-        <p className="text-xs text-gris">SELECT / WITH / EXPLAIN / SHOW uniquement, une instruction, transaction READ ONLY, 5 s max, 500 lignes.</p>
+        <p className="text-xs text-gris">{hint}</p>
       </div>
-      <textarea name="sql" rows={5} className="field font-mono" placeholder="SELECT now()" spellCheck={false} required />
+      <textarea name="sql" rows={rows} className="field font-mono" placeholder={placeholder} spellCheck={false} required />
       <div>
         <button type="submit" className="btn" disabled={pending}>
           {pending ? "Exécution…" : "Exécuter (lecture seule)"}

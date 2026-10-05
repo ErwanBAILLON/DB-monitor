@@ -5,6 +5,7 @@ import { Sparkline } from "@/components/sparkline";
 import { Engine, StatusDot } from "@/components/status";
 import { ago, bytes, duration, pct } from "@/lib/format";
 import { CHECK_INTERVAL_MS } from "@/lib/checker";
+import { SIZE_LABEL, type EngineType } from "@/lib/drivers/types";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Flotte" };
@@ -65,7 +66,7 @@ export default async function FleetPage() {
                   {last?.connMax ? ` / ${last.connMax}` : ""}
                   {conn !== null && <span className={`ml-2 ${conn > 80 ? "text-panne" : conn > 60 ? "text-alerte" : "text-gris"}`}>{conn} %</span>}
                 </dd>
-                <dt className="text-gris">{i.type === "redis" ? "Mémoire" : "Taille"}</dt>
+                <dt className="text-gris">{SIZE_LABEL[i.type as EngineType] ?? "Taille"}</dt>
                 <dd className="col-span-2 font-mono">
                   {bytes(last?.sizeBytes)}
                   {mem !== null && <span className={`ml-2 ${mem > 85 ? "text-panne" : "text-gris"}`}>{mem} % de {bytes(last?.memMax)}</span>}

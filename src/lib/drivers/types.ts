@@ -1,7 +1,45 @@
-export type EngineType = "postgres" | "mysql" | "redis";
-export const ENGINES: EngineType[] = ["postgres", "mysql", "redis"];
-export const ENGINE_LABEL: Record<EngineType, string> = { postgres: "PostgreSQL", mysql: "MySQL / MariaDB", redis: "Redis" };
-export const DEFAULT_PORT: Record<EngineType, number> = { postgres: 5432, mysql: 3306, redis: 6379 };
+export type EngineType = "postgres" | "cockroach" | "mysql" | "redis" | "mongodb" | "clickhouse" | "opensearch" | "mssql" | "sqlite";
+export const ENGINES: EngineType[] = ["postgres", "cockroach", "mysql", "redis", "mongodb", "clickhouse", "opensearch", "mssql", "sqlite"];
+export const ENGINE_LABEL: Record<EngineType, string> = {
+  postgres: "PostgreSQL",
+  cockroach: "CockroachDB",
+  mysql: "MySQL / MariaDB",
+  redis: "Redis-compatible (Redis, Valkey, KeyDB, Dragonfly)",
+  mongodb: "MongoDB",
+  clickhouse: "ClickHouse",
+  opensearch: "OpenSearch / Elasticsearch",
+  mssql: "SQL Server",
+  sqlite: "SQLite (fichier monté)",
+};
+export const DEFAULT_PORT: Record<EngineType, number> = {
+  postgres: 5432,
+  cockroach: 26257,
+  mysql: 3306,
+  redis: 6379,
+  mongodb: 27017,
+  clickhouse: 8123,
+  opensearch: 9200,
+  mssql: 1433,
+  sqlite: 0,
+};
+// Short badge shown on fleet cards and instance headers.
+export const ENGINE_BADGE: Record<EngineType, string> = { postgres: "PG", cockroach: "CR", mysql: "MY", redis: "RD", mongodb: "MG", clickhouse: "CH", opensearch: "OS", mssql: "MS", sqlite: "SQ" };
+// Which engines offer a read-only SQL/query console (`query` tab).
+export const HAS_CONSOLE: Record<EngineType, boolean> = { postgres: true, cockroach: true, mysql: true, redis: false, mongodb: true, clickhouse: true, opensearch: true, mssql: true, sqlite: true };
+// Hint for the "database / path" field of the instance form.
+export const DATABASE_HINT: Record<EngineType, string> = {
+  postgres: "Base de maintenance (postgres)",
+  cockroach: "Base de maintenance (defaultdb)",
+  mysql: "Base par défaut (optionnel)",
+  redis: "N° de db (0)",
+  mongodb: "Base d'authentification (admin)",
+  clickhouse: "Base par défaut (default)",
+  opensearch: "Préfixe d'URL (optionnel, ex. /es)",
+  mssql: "Base par défaut (master)",
+  sqlite: "Chemin du fichier .db dans le pod",
+};
+// Label of the size cell: Redis reports used memory, the others a total data size.
+export const SIZE_LABEL: Record<EngineType, string> = { postgres: "Taille", cockroach: "Taille", mysql: "Taille", redis: "Mémoire", mongodb: "Taille", clickhouse: "Taille", opensearch: "Taille", mssql: "Taille", sqlite: "Fichier" };
 
 // Decrypted connection parameters, built from an Instance row (never persisted).
 export type Conn = {
@@ -66,4 +104,14 @@ export function plainRow(r: Row): Row {
     else out[k] = v;
   }
   return out;
+}
+
+// Rows from a result set given as arrays + column names, capped at MAX_ROWS.
+export function tabulate(columns: string[], all: unknown[][], t0: number): QueryResult {
+  const rows = all.slice(0, MAX_ROWS).map((arr) => {
+    const o: Row = {};
+    columns.forEach((name, i) => (o[name] = arr[i]));
+    return plainRow(o);
+  });
+  return { columns, rows, rowCount: all.length, durationMs: Date.now() - t0, truncated: all.length > MAX_ROWS };
 }

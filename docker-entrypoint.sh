@@ -13,6 +13,11 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
+# Demo SQLite file for the sqlite engine (helm sqlite.sample).
+if [ -n "$DBMON_SQLITE_SAMPLE" ]; then
+  node scripts/sqlite-sample.cjs "$DBMON_SQLITE_SAMPLE" || echo "sqlite sample creation failed (non-fatal)"
+fi
+
 echo "Starting server..."
 node server.js &
 NODE_PID=$!

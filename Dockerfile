@@ -43,8 +43,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# pg_dump for the "dump a database" action (alpine 3.20 ships postgresql16-client).
-RUN apk add --no-cache postgresql16-client && \
+# pg_dump and mariadb-dump for the "dump a database" actions (alpine 3.20 ships
+# postgresql16-client and mariadb-client; the latter dumps MySQL 8 servers too).
+RUN apk add --no-cache postgresql16-client mariadb-client && \
     addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
@@ -58,6 +59,7 @@ COPY --from=builder /app/public/ ./public/
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/scripts/sqlite-sample.cjs ./scripts/sqlite-sample.cjs
 
 USER nextjs
 

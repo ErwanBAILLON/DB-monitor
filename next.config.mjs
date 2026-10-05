@@ -5,7 +5,9 @@ const nextConfig = {
   experimental: {
     instrumentationHook: true,
     // Database drivers stay outside the server bundle (native/dynamic requires).
-    serverComponentsExternalPackages: ["pg", "mysql2", "ioredis"],
+    serverComponentsExternalPackages: ["pg", "mysql2", "ioredis", "mongodb", "mssql", "node-sqlite3-wasm"],
+    // The WASM binary is loaded at runtime by node-sqlite3-wasm and is not traced.
+    outputFileTracingIncludes: { "/**/*": ["./node_modules/node-sqlite3-wasm/dist/*"] },
   },
   async headers() {
     return [

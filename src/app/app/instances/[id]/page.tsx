@@ -10,9 +10,8 @@ import { ConfirmForm } from "@/components/confirm-form";
 import { InstanceForm } from "@/components/instance-form";
 import { ago, bytes, dt, duration } from "@/lib/format";
 import { editInstance, removeInstance, saveThresholds, testConnection, toggleEnabled } from "@/app/app/actions";
-import { PostgresTabs, postgresTabList } from "./postgres";
-import { RedisTabs, redisTabList } from "./redis";
-import { MysqlTabs, mysqlTabList } from "./mysql";
+import { ENGINE_TABS } from "./engines";
+import { SIZE_LABEL, type EngineType } from "@/lib/drivers/types";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +24,8 @@ export default async function InstancePage({ params, searchParams }: { params: {
   const inst = await prisma.instance.findUnique({ where: { id: params.id } });
   if (!inst) notFound();
   const tab = searchParams.tab ?? "overview";
-  const engineTabs = inst.type === "postgres" ? postgresTabList : inst.type === "redis" ? redisTabList : mysqlTabList;
+  const engineDef = ENGINE_TABS[inst.type as EngineType];
+  const engineTabs = engineDef?.tabs ?? [];
   const tabs = [COMMON_TABS[0], ...engineTabs, COMMON_TABS[1]];
   const base = `/app/instances/${inst.id}`;
   const checks = await prisma.check.findMany({ where: { instanceId: inst.id }, orderBy: { at: "desc" }, take: 120 });
@@ -34,10 +34,10 @@ export default async function InstancePage({ params, searchParams }: { params: {
   const t = thresholdsOf(inst.thresholds);
 
   let engine: React.ReactNode = null;
-  if (engineTabs.some((x) => x.key === tab)) {
+  if (engineDef && engineTabs.some((x) => x.key === tab)) {
     const conn = connOf(inst);
     try {
-      engine = inst.type === "postgres" ? await PostgresTabs({ inst, conn, tab }) : inst.type === "redis" ? await RedisTabs({ inst, conn, tab }) : await MysqlTabs({ inst, conn, tab });
+      engine = await engineDef.render({ inst, conn, tab });
     } catch (err) {
       engine = (
         <p className="card font-mono text-sm text-panne" data-testid="engine-error">
@@ -95,7 +95,7 @@ export default async function InstancePage({ params, searchParams }: { params: {
                     {last.connUsed ?? "–"}
                     {last.connMax ? ` / ${last.connMax}` : ""}
                   </dd>
-                  <dt className="text-gris">{inst.type === "redis" ? "Mémoire" : "Taille totale"}</dt>
+                  <dt className="text-gris">{SIZE_LABEL[inst.type as EngineType] ?? "Taille"}</dt>
                   <dd className="font-mono">
                     {bytes(last.sizeBytes)}
                     {last.memMax && last.memMax > 0n ? ` / ${bytes(last.memMax)}` : ""}

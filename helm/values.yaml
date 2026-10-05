@@ -69,6 +69,18 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
+# SQLite files are read from volumes mounted read-only into the pod. Each mount
+# becomes an allowed root (DBMON_SQLITE_ROOTS); the instance's "database" field is
+# the file path. `sample: true` adds an emptyDir at /data/sqlite with a demo file
+# written on pod start (scripts/sqlite-sample.cjs) so the engine has a live testbed.
+sqlite:
+  sample: true
+  samplePath: /data/sqlite/sample.db
+  mounts: []
+  #  - name: app-sqlite
+  #    mountPath: /data/sqlite/app
+  #    persistentVolumeClaim: app-data   # or hostPath: /srv/app/data
+
 env:
   NODE_ENV: production
   NEXTAUTH_URL: https://dbmon.ebaillon.fr
@@ -121,7 +133,8 @@ networkPolicy:
     - namespace: database
       ports: [5432]
     - namespace: projects
-      ports: [5432, 6379, 3306, 27017]
+      # postgres, redis, mysql/mariadb, mongodb, clickhouse http, opensearch http, sql server, cockroach
+      ports: [5432, 6379, 3306, 27017, 8123, 9200, 1433, 26257]
     - namespace: argocd
       ports: [6379]
     - namespace: monitoring

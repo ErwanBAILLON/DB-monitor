@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { createInstance } from "@/lib/instances";
-import { isEngine } from "@/lib/instances";
+import { defaultPort, isEngine } from "@/lib/instances";
 
 // First-deploy seed: DBMON_SEED_JSON (from Vault) lists the homelab fleet.
 // Additive and idempotent: an instance whose name already exists is left as is,
@@ -42,7 +42,7 @@ export async function seedFromEnv(json = process.env.DBMON_SEED_JSON): Promise<n
       name: e.name,
       type: e.type,
       host: e.host,
-      port: Number(e.port) || (e.type === "postgres" ? 5432 : e.type === "mysql" ? 3306 : 6379),
+      port: Number(e.port) || defaultPort(e.type),
       username: e.username,
       password: e.password,
       database: e.database,
