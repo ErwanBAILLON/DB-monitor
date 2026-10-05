@@ -141,3 +141,32 @@ describe("explore API surface", () => {
     expect([...EXPLORE_OPS]).toEqual(["containers", "objects", "describe", "browse", "profile", "stats"]);
   });
 });
+
+describe("ClickHouse composition", async () => {
+  const { composeClickHouse, paramType, baseType } = await import("@/lib/explore/clickhouse");
+  const columns = ["id", "status", "amount", "tags", "ts"];
+  const types = { id: "UInt64", status: "LowCardinality(String)", amount: "Decimal(12, 2)", tags: "Array(String)", ts: "DateTime" };
+  it("maps column types to typed placeholders, text form for complex types", () => {
+    expect(baseType("LowCardinality(Nullable(String))")).toBe("String");
+    expect(paramType("Nullable(Int32)")).toBe("Int32");
+    expect(paramType("Decimal(12, 2)")).toBe("Decimal(12, 2)");
+    expect(paramType("Array(String)")).toBeNull();
+    expect(paramType("DateTime('UTC')")).toBeNull();
+    expect(paramType("Enum8('a' = 1)")).toBeNull();
+    expect(paramType(undefined)).toBeNull();
+  });
+  it("binds values as {pN:Type} parameters, never in the SQL text", () => {
+    const c = composeClickHouse("`db`.`t`", columns, types, { page: 2, pageSize: 10, sortColumn: "amount", sortDir: "desc", filters: [{ column: "status", op: "=", value: "paid'; DROP TABLE t" }, { column: "amount", op: ">=", value: "100" }, { column: "tags", op: "!=", value: "[]" }, { column: "id", op: "like", value: "1%" }, { column: "ts", op: "is not null" }] }, ["status", "ts", "id"]);
+    expect(c.select).toBe("SELECT `id`, `status`, `amount`, `tags`, `ts` FROM `db`.`t` WHERE `status` = {p1:String} AND `amount` >= {p2:Decimal(12, 2)} AND toString(`tags`) <> {p3:String} AND toString(`id`) LIKE {p4:String} AND `ts` IS NOT NULL ORDER BY `amount` DESC LIMIT {p5:UInt64} OFFSET {p6:UInt64}");
+    expect(c.paramMap).toEqual({ p1: "paid'; DROP TABLE t", p2: "100", p3: "[]", p4: "1%", p5: 10, p6: 10 });
+    expect(c.select).not.toContain("DROP");
+    expect(c.count).toBe("SELECT count(*) AS n FROM `db`.`t` WHERE `status` = {p1:String} AND `amount` >= {p2:Decimal(12, 2)} AND toString(`tags`) <> {p3:String} AND toString(`id`) LIKE {p4:String} AND `ts` IS NOT NULL");
+  });
+  it("uses the sorting key as default order and refuses bad identifiers", () => {
+    const c = composeClickHouse("`db`.`t`", columns, types, { page: 1, pageSize: 50, filters: [] }, ["status", "ts", "id"]);
+    expect(c.select).toMatch(/ORDER BY `status`, `ts`, `id` LIMIT \{p1:UInt64\} OFFSET \{p2:UInt64\}$/);
+    expect(() => composeClickHouse("`db`.`t`", columns, types, { page: 1, pageSize: 5, sortColumn: "id; DROP", filters: [] })).toThrow(/invalide/);
+    expect(() => composeClickHouse("`db`.`t`", columns, types, { page: 1, pageSize: 5, filters: [{ column: "1=1", op: "=", value: "1" }] })).toThrow(/invalide/);
+    expect(() => composeClickHouse("`db`.`t`", columns, types, { page: 1, pageSize: 5, filters: [{ column: "secret", op: "=", value: "1" }] })).toThrow(/inconnue/);
+  });
+});

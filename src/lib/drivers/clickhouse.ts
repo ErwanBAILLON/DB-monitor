@@ -100,6 +100,24 @@ export async function killQuery(c: Conn, queryId: string): Promise<string> {
   return String(scalar(r) ?? "sent");
 }
 
+// Read-only execution path shared by the console and the explorer: every statement runs
+// with readonly=1 (server-enforced: no writes, no SET), max_result_rows capped, the console
+// timeout. `params` are bound ClickHouse query parameters ({name:Type} in the SQL, sent as
+// param_<name> URL parameters): values never touch the SQL text.
+export type ChRun = (sql: string, params?: Record<string, string | number>) => Promise<ChResponse>;
+export async function readOnlyExec<T>(c: Conn, database: string | undefined, fn: (run: ChRun) => Promise<T>): Promise<T> {
+  const conn = { ...c, database: database ?? c.database };
+  const run: ChRun = (sql, params = {}) => {
+    const settings: Record<string, string | number> = { readonly: 1, max_result_rows: 100_000, result_overflow_mode: "break" };
+    for (const [k, v] of Object.entries(params)) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(k)) throw new Error(`Paramètre invalide : ${k}`);
+      settings[`param_${k}`] = v;
+    }
+    return query(conn, sql, settings, QUERY_TIMEOUT_MS);
+  };
+  return fn(run);
+}
+
 // Read-only console: guard + readonly=1 (server-side: no writes, no SET) + max_execution_time.
 export async function readOnlyQuery(c: Conn, sql: string, database?: string): Promise<QueryResult> {
   const g = guardReadOnly(sql, { allowFirst: ["describe", "desc", "exists"] });

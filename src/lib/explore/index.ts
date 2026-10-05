@@ -34,5 +34,6 @@ reg("postgres", () => import("./postgres"));
 reg("mysql", () => import("./mysql"));
 reg("sqlite", () => import("./sqlite"));
 reg("s3", () => import("./s3"));
+reg("clickhouse", () => import("./clickhouse"));
 
 export const explorerEngines = (): EngineType[] => ENGINES.filter((e) => HAS_EXPLORER[e]);
