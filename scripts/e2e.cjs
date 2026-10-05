@@ -1,7 +1,7 @@
 // End-to-end run against a running server (local or prod).
 //   BASE=http://127.0.0.1:3140 ADMIN_PASSWORD=... PG_HOST=127.0.0.1 PG_PORT=5490 node scripts/e2e.cjs
 // Prod (read-only, uses an already registered instance):
-//   BASE=https://dbmon.ebaillon.fr RESOLVE_IP=192.168.1.150 READONLY=1 INSTANCE=shared-postgres node scripts/e2e.cjs
+//   BASE=https://<host> RESOLVE_IP=<ingress-ip> READONLY=1 INSTANCE=<registered-instance> node scripts/e2e.cjs
 // Needs Playwright (PLAYWRIGHT=path to the module).
 const PW = process.env.PLAYWRIGHT || "playwright";
 const { chromium } = require(PW);

@@ -1,5 +1,7 @@
 # DB Monitor
 
+MIT licensed. Public home: <https://github.com/ErwanBAILLON/DB-monitor> (mirror; development happens on a self-hosted Gitea whose CI builds and deploys the image). The `helm/` chart and `.gitea/` workflow are the author's homelab deployment, kept as a worked example.
+
 Fleet console for heterogeneous databases: one UI to see and operate every
 database server of the homelab (PostgreSQL, CockroachDB, MySQL/MariaDB,
 Redis-compatible, MongoDB, ClickHouse, OpenSearch/Elasticsearch, SQL Server,
@@ -12,8 +14,8 @@ engine): the goal is the same, "several kinds of databases, managed easily at
 the same time", now as a Kubernetes-deployed Next.js app that connects to the
 real instances over the network.
 
-- Prod: https://dbmon.ebaillon.fr (LAN only, single admin login, 5 failed logins per client IP = 15 min lock, doubling)
-- Image: `git.ebaillon.fr/infra/db-monitor`, chart in `helm/`, ArgoCD app `db-monitor` (ns `projects`)
+- Single admin login, 5 failed logins per client IP = 15 min lock, doubling; meant for a LAN-only exposure
+- Author's deployment (example): image built by `.gitea/workflows`, chart in `helm/`, ArgoCD app `db-monitor` (ns `projects`), config from Vault via ExternalSecrets
 
 ## Support matrix
 
@@ -128,7 +130,7 @@ and `pg_terminate_backend`. The driver then runs the statement in `BEGIN READ ON
 `statement_timeout = 5 s` and caps the result at 500 rows. Both layers are
 tested (`tests/unit.test.ts`, `tests/integration/postgres.test.ts`).
 
-## Configuration (Vault `secret/db-monitor/main`)
+## Configuration (environment variables; the author's chart reads them from a Vault secret through ExternalSecrets)
 
 | Key | Required | Role |
 |---|---|---|
@@ -166,8 +168,8 @@ pnpm test:integration     # postgres: TEST_PG_URL or the local 5490 server; sqli
 ENGINES_FILE=engines.json node scripts/e2e-engines.cjs    # Playwright tour of every tab of every registered engine
 pnpm build && PORT=3140 pnpm start
 PLAYWRIGHT=<path to playwright module> node scripts/e2e.cjs            # local full flow
-BASE=https://dbmon.ebaillon.fr RESOLVE_IP=192.168.1.150 READONLY=1 INSTANCE=shared-postgres \
-  ADMIN_PASSWORD=... node scripts/e2e.cjs                               # prod, read-only
+BASE=https://<your-host> RESOLVE_IP=<ingress-ip> READONLY=1 INSTANCE=<registered-instance> \
+  ADMIN_PASSWORD=... node scripts/e2e.cjs                               # deployed app, read-only
 ```
 
 Deploy: push to `main` -> Gitea Actions builds and pushes the image, bumps

@@ -1,7 +1,7 @@
 // Engine tour: registers (or reuses) instances and walks through every detail tab.
 //   BASE=http://127.0.0.1:3170 ADMIN_PASSWORD=... ENGINES_FILE=/path/engines.json node scripts/e2e-engines.cjs
 //   engines.json: [{ name, type, host, port, username, password, database, query, queryDb, tls }]
-// Prod: BASE=https://dbmon.ebaillon.fr RESOLVE_IP=192.168.1.150 (instances must already be allowed by DBMON_ALLOWED_TARGETS).
+// Prod: BASE=https://<host> RESOLVE_IP=<ingress-ip> (instances must already be allowed by DBMON_ALLOWED_TARGETS).
 // Fails on any "engine-error" panel, page error, or console query error. Screenshots in SHOTS.
 const PW = process.env.PLAYWRIGHT || "playwright";
 const { chromium } = require(PW);
