@@ -160,6 +160,7 @@ pnpm install
 pnpm exec prisma migrate dev
 pnpm test                 # unit: crypto, SQL guard, thresholds, parsers (tests/unit.test.ts, tests/engines.test.ts)
 pnpm test:integration     # postgres: TEST_PG_URL or the local 5490 server; sqlite: always (temp file);
+                          # explorer: TEST_POSTGRES_URL (fixture: node scripts/explore-seed-postgres.cjs), TEST_MARIADB_URL -> tests/integration/<engine>.explore.test.ts
                           # other engines run only when their URL is set and are skipped otherwise:
                           # TEST_CASSANDRA_URL (cql://[user:pw@]host:port), TEST_INFLUX_URL (http://:TOKEN@host:port/ORG), TEST_NEO4J_URL (bolt://user:pw@host:port), TEST_ETCD_URL (http://host:port), TEST_RABBITMQ_URL (http://user:pw@host:15672), TEST_S3_URL (http://ACCESS:SECRET@host:9000), TEST_ORACLE_URL (oracle://SYSTEM:pw@host:1521/FREEPDB1),
                           # TEST_MARIADB_URL / TEST_MYSQL_URL (mysql://user:pw@host:port), TEST_MONGO_URL,
@@ -169,6 +170,7 @@ pnpm test:integration     # postgres: TEST_PG_URL or the local 5490 server; sqli
 ENGINES_FILE=engines.json node scripts/e2e-engines.cjs    # Playwright tour of every tab of every registered engine
 pnpm build && PORT=3140 pnpm start
 PLAYWRIGHT=<path to playwright module> node scripts/e2e.cjs            # local full flow
+INSTANCES=shared-postgres,test-mariadb node scripts/e2e-explorer.cjs   # Explorer tour (structure, filtered+sorted rows, profile, stats), screenshots in SHOTS
 BASE=https://<your-host> RESOLVE_IP=<ingress-ip> READONLY=1 INSTANCE=<registered-instance> \
   ADMIN_PASSWORD=... node scripts/e2e.cjs                               # deployed app, read-only
 ```
