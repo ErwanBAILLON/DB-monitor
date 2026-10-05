@@ -244,6 +244,51 @@ Audit actions: `explore.describe`, `explore.browse`, `explore.profile`,
   `quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z` (ns `storage`, list-only
   key) by `tests/integration/s3.explore.test.ts` (`TEST_S3_URL`).
 
+### ClickHouse (`clickhouse`)
+
+- Containers: databases from `system.databases` (except
+  `INFORMATION_SCHEMA` / `information_schema`; `system` is listed and flagged
+  `systeme`), engine, table count, bytes on disk and rows of the active parts.
+- Objects: tables, views, materialized views, dictionaries from
+  `system.tables` with engine, `total_rows` / `total_bytes`, active parts,
+  partitions, compression ratio, last part modification.
+- Structure: `system.columns` (type, `Nullable(...)` -> nullable, default
+  expression and kind, in primary / sorting / partition key, comment, codec,
+  per-column compression ratio when the parts are wide), indexes = the sparse
+  primary key (never unique) plus `system.data_skipping_indices` (type,
+  expression, granularity, size), no constraints (ClickHouse has none),
+  partitioning (engine, partition / sorting / primary / sampling keys,
+  partition count), storage from `system.parts` (disk, compressed /
+  uncompressed bytes and ratio, rows, active parts, max parts per partition,
+  marks, last modification, table comment), one sample row in sorting-key
+  order.
+- Données: backtick-quoted identifiers, values bound as ClickHouse query
+  parameters (`{pN:Type}` in the SQL, `param_pN` URL parameters, the type
+  taken from the column: `UInt64`, `Decimal(12, 2)`, `DateTime`...). `LIKE`
+  and complex types (`Array`, `Map`, `Tuple`, `Enum`, `DateTime('UTC')`...)
+  compare on `toString(col)`. Every statement runs with server-enforced
+  `readonly=1`, `max_execution_time = 5`, `max_result_rows`, through
+  `readOnlyExec` shared with the console. Default order = sorting key.
+  Total = `count()` under the same timeout; on timeout without filter
+  `system.tables.total_rows` (flagged), null with filters.
+- Profil: first 10 000 rows in sorting-key order, `uniqExact`, min/max native
+  for simple types and on the text form otherwise, top 10 by `GROUP BY v`.
+  Note that a sorting key starting with the profiled column biases the sample
+  (the first 10 000 rows share the smallest values).
+- Statistiques (per database): parts and compression per table (active parts,
+  partitions, max parts per partition, ratio, marks), biggest columns
+  (`system.columns`, empty for compact parts), running merges + pending
+  mutations, top 20 queries by total time from `system.query_log` (24 h,
+  grouped by `normalized_query_hash`, `system.*` excluded; unsupported when
+  the log is disabled), skipping indexes, biggest partitions.
+- Not shown: `INFORMATION_SCHEMA` views, projections, dictionaries' sources
+  (may hold credentials), `system.query_log` query parameters. Identifiers
+  outside `[A-Za-z0-9_$]` are refused, not quoted.
+- Tested live against `dbmon-test-clickhouse` (clickhouse/clickhouse-server:24.8)
+  with database `dbmon_explore_test` (events: MergeTree, 50 000 rows,
+  `PARTITION BY toYYYYMM(ts)`, wide parts, skipping index; view daily_totals)
+  by `tests/integration/clickhouse.explore.test.ts` (`TEST_CLICKHOUSE_URL`).
+
 ### Template for the other engines
 
 ```
