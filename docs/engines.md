@@ -230,3 +230,46 @@ RETURN or an existing LIMIT capped; transaction timeout 5 s set at
 values are rendered as `(:Label {props})` / `[:TYPE {props}]`.
 
 TLS: `bolt+ssc` (self-signed accepted) when the TLS flag is set.
+
+## etcd v3 (`etcd`, gRPC-gateway HTTP `/v3/*`, default port 2379, read-only)
+
+| Need | Permission (etcd RBAC, when `--auth-token` is enabled) |
+|---|---|
+| Probe (`/v3/maintenance/status`, `/v3/cluster/member/list`, `/v3/maintenance/alarm` GET) | any authenticated user (status, member list and alarm GET are not permission-gated) |
+| Key counts (`/v3/kv/range` with `count_only` / `keys_only`) | role with **read** on the key range (`etcdctl role grant-permission <role> read "" "\0"` for the whole keyspace, or narrower prefixes) |
+
+Without authentication leave user/password empty. With it, the driver calls
+`/v3/auth/authenticate` and sends the token in `Authorization` (the gateway
+does not take basic auth). The instance's "database" field holds the
+configured `--quota-backend-bytes` (bytes) so that the dbSize gauge and the
+fleet "% of quota" are right; empty = etcd's default 2 GiB.
+
+What is read: status (version, dbSize, dbSizeInUse, leader, raft term/index,
+errors), members (id, name, learner, peer/client URLs), alarms (NOSPACE,
+CORRUPT), the total key count, and the key **names** (never the values:
+`keys_only: true`) paginated 1000 at a time and capped at 5000 keys to
+discover the top-level prefixes, then one exact `count_only` range per prefix.
+No write endpoint is ever called (`put`, `deleterange`, `compaction`, `defragment`,
+`alarm DISARM`, `member/*` mutations are absent from the driver; the integration
+test seeds its keys through the gateway directly).
+
+### The Kubernetes etcd is deliberately not registered
+
+The cluster's own etcd (`kube-system`, 127.0.0.1:2379 on the control-plane
+node) only accepts client certificates (`/etc/kubernetes/pki/etcd/ca.crt`,
+`healthcheck-client.crt/.key`) and is in a critical namespace. The driver has
+no client-certificate option on purpose. To add it read-only one day:
+
+1. Issue a dedicated client certificate from the etcd CA (`kubeadm certs` or
+   `openssl` against `/etc/kubernetes/pki/etcd/ca.crt|key`) with CN `dbmon`,
+   mount it in the pod through a Secret, and extend `Conn` with
+   `clientCert/clientKey/ca` passed to `httpRequest` (`https.request` options
+   `cert`, `key`, `ca`).
+2. Enable etcd RBAC (`etcdctl auth enable`) and grant `dbmon` a role with
+   **read** on `/registry` only (count-only is still a read).
+3. Expose 2379 to the pod: a headless Service/Endpoints to the node IP in
+   `kube-system` plus an egress entry in `networkPolicy.egress`; note that
+   `/registry` holds Secrets, so even `keys_only` leaks Secret **names**: keep
+   the scan to `count_only` for that instance.
+
+Until then the probe and tabs are validated on a standalone etcd only.

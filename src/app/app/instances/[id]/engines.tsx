@@ -12,6 +12,7 @@ import { SqliteTabs, sqliteTabList } from "./sqlite";
 import { CassandraTabs, cassandraTabList } from "./cassandra";
 import { InfluxTabs, influxTabList } from "./influxdb";
 import { Neo4jTabs, neo4jTabList } from "./neo4j";
+import { EtcdTabs, etcdTabList } from "./etcd";
 
 export type TabDef = { key: string; label: string };
 export type EngineTabs = { tabs: TabDef[]; render: (p: { inst: Instance; conn: Conn; tab: string }) => Promise<React.ReactNode> };
@@ -30,4 +31,5 @@ export const ENGINE_TABS: Record<EngineType, EngineTabs> = {
   cassandra: { tabs: cassandraTabList, render: CassandraTabs },
   influxdb: { tabs: influxTabList, render: InfluxTabs },
   neo4j: { tabs: neo4jTabList, render: Neo4jTabs },
+  etcd: { tabs: etcdTabList, render: EtcdTabs },
 };

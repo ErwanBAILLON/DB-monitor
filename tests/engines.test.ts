@@ -360,3 +360,20 @@ describe("neo4j parsers and Cypher guard", () => {
     ko("MATCH (n) CALL { WITH n SET n.x = 1 } IN TRANSACTIONS RETURN count(*)", /SET|IN TRANSACTIONS/);
   });
 });
+
+describe("etcd parsers", () => {
+  it("builds the probe from status, members and alarms", async () => {
+    const { fromStatus, topPrefix, nextPrefix, quotaOf, DEFAULT_QUOTA_BYTES } = await import("@/lib/drivers/etcd");
+    const status = { header: { member_id: "1", revision: "9" }, version: "3.5.17", dbSize: "20480", dbSizeInUse: "16384", leader: "1", raftTerm: "2" };
+    const p = fromStatus(status, [{ ID: "1", name: "a" }, { ID: "2", name: "b" }], [], 42, 64 * 1024 * 1024);
+    expect(p).toEqual({ version: "3.5.17", sizeBytes: 20480n, memMax: 67108864n, connUsed: 42, role: "leader · 2 membres · leader a" });
+    expect(fromStatus({ ...status, leader: "2", errors: ["x"] }, [{ ID: "1", name: "a" }, { ID: "2", name: "b" }], [{ alarm: "NOSPACE" }], 0).role).toBe("follower · 2 membres · leader b · 1 alarme · 1 erreur(s)");
+    expect(topPrefix("/registry/pods/x")).toBe("/registry");
+    expect(topPrefix("foo/a")).toBe("foo");
+    expect(topPrefix("bar")).toBe("bar");
+    expect(nextPrefix("foo")).toBe("fop");
+    expect(nextPrefix("/registry")).toBe("/registrz");
+    expect(quotaOf({ type: "etcd", host: "h", port: 1, tls: false, database: "123" })).toBe(123);
+    expect(quotaOf({ type: "etcd", host: "h", port: 1, tls: false, database: "" })).toBe(DEFAULT_QUOTA_BYTES);
+  });
+});

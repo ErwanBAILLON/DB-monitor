@@ -17,6 +17,7 @@ const HOST_HINT: Record<EngineType, string> = {
   cassandra: "scylla.projects.svc.cluster.local (port CQL)",
   influxdb: "influxdb.projects.svc.cluster.local (port HTTP)",
   neo4j: "neo4j.projects.svc.cluster.local (port Bolt)",
+  etcd: "etcd.projects.svc.cluster.local (port client)",
 };
 const USER_HINT: Record<EngineType, string> = {
   postgres: "dbmon",
@@ -31,6 +32,7 @@ const USER_HINT: Record<EngineType, string> = {
   cassandra: "cassandra (vide sans authentification)",
   influxdb: "(ignoré : le token va dans le mot de passe)",
   neo4j: "neo4j ou un utilisateur reader + admin pour TERMINATE",
+  etcd: "vide sans auth, sinon un utilisateur avec rôle lecture",
 };
 
 export function InstanceForm({ instance, action, submitLabel }: { instance?: Instance; action: (fd: FormData) => Promise<void>; submitLabel: string }) {
